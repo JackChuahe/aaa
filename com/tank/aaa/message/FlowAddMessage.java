@@ -1,8 +1,10 @@
 package com.tank.aaa.message;
 
+import com.tank.aaa.entity.Flow;
+
 import net.floodlightcontroller.routing.Route;
 
-public class FlowAddMessage implements IFlowMessage {
+public class FlowAddMessage extends FlowMessage {
 	private Flow flow;
 	private Route route;
 	

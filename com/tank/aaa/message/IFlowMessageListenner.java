@@ -6,5 +6,5 @@ public interface IFlowMessageListenner {
 	 * @param type
 	 * @param msg
 	 */
-	public void messageRecive(FlowMessageType type, IFlowMessage msg);
+	public void messageRecive(FlowMessageType type, FlowMessage msg);
 }

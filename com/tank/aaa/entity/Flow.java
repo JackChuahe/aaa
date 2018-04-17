@@ -1,4 +1,4 @@
-package com.tank.aaa.message;
+package com.tank.aaa.entity;
 
 public class Flow {
 	private static final int PRIME_1 = 3;
@@ -10,8 +10,8 @@ public class Flow {
 	private int srcIp;
 	private int dstIp;
 	private short ipProtocol; // udp // tcp // others
-	private short srcPort;
-	private short dstPort;
+	private int srcPort;
+	private int dstPort;
 
 	public int getSrcIp() {
 		return srcIp;
@@ -37,19 +37,19 @@ public class Flow {
 		this.ipProtocol = ipProtocol;
 	}
 
-	public short getSrcPort() {
+	public int getSrcPort() {
 		return srcPort;
 	}
 
-	public void setSrcPort(short srcPort) {
+	public void setSrcPort(int srcPort) {
 		this.srcPort = srcPort;
 	}
 
-	public short getDstPort() {
+	public int getDstPort() {
 		return dstPort;
 	}
 
-	public void setDstPort(short dstPort) {
+	public void setDstPort(int dstPort) {
 		this.dstPort = dstPort;
 	}
 
@@ -59,7 +59,7 @@ public class Flow {
 				+ srcPort + "] dstPort[" + dstPort;
 	}
 
-	public Flow(int srcIp, int dstIp, short ipProtocol, short srcPort, short dstPort) {
+	public Flow(int srcIp, int dstIp, short ipProtocol, int srcPort, int dstPort) {
 		super();
 		this.srcIp = srcIp;
 		this.dstIp = dstIp;
