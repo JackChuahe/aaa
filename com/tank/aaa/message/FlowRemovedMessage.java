@@ -10,6 +10,7 @@ public class FlowRemovedMessage extends FlowMessage {
 	}
 
 	private FlowRemovedMessage(FlowStatics flowStats) {
+		this.flowStats = flowStats;
 	}
 
 	@Override

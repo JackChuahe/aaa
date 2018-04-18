@@ -79,7 +79,7 @@ public class SwitchSelectionInfoCollector implements IOFMessageListener, IFloodl
 	@Override
 	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
 		floodlightProvider.addOFMessageListener(OFType.FLOW_REMOVED, this);
-		floodlightProvider.addOFMessageListener(OFType.PACKET_IN, this);
+		// floodlightProvider.addOFMessageListener(OFType.PACKET_IN, this);
 		// floodlightProvider.addOFMessageListener(OFType.FLOW_MOD, this);
 		logger.info("Switch selection has start up!");
 	}
@@ -112,11 +112,10 @@ public class SwitchSelectionInfoCollector implements IOFMessageListener, IFloodl
 					logger.info("Publish a flow removed message");
 				}
 			}
-
-			logger.info(oflr.toString());
+			 //logger.info(oflr.toString());
 			break;
-		case PACKET_IN:
-			break;
+		// case PACKET_IN:
+		// break;
 		}
 		return Command.CONTINUE;
 	}

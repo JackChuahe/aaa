@@ -39,11 +39,14 @@ public class FlowMessageService implements IFloodlightModule, IFlowMessageServic
 			log.info("Start up message dispatch service successful");
 			while (true) {
 				try {
-					log.info("Waiting for message...");
+					//log.info("Waiting for message...");
 					FlowMessage ifMsg = bq.take();
 					for (IFlowMessageListenner listenner : listenners.get(ifMsg.getMessageType())) {
+						//log.info(ifMsg.getMessageType()+"");
 						listenner.messageRecive(ifMsg.getMessageType(), ifMsg);
+						//log.info(ifMsg.getMessageType()+"");
 					}
+					//log.info(ifMsg.getMessageType()+"");
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
@@ -62,6 +65,7 @@ public class FlowMessageService implements IFloodlightModule, IFlowMessageServic
 		List<IFlowMessageListenner> list = listenners.get(type);
 		if (list == null) {
 			list = new ArrayList<IFlowMessageListenner>();
+			list.add(listenner);
 			listenners.put(type, list);
 		} else {
 			if (!list.contains(listenner)) {
