@@ -20,7 +20,7 @@ import com.tank.aaa.message.FlowAddMessage;
 import com.tank.aaa.message.FlowMessage;
 import com.tank.aaa.message.FlowMessageType;
 import com.tank.aaa.message.FlowRemovedMessage;
-import com.tank.aaa.message.IFlowMessageListenner;
+import com.tank.aaa.message.IFlowMessageListener;
 import com.tank.aaa.message.IFlowMessageService;
 
 import net.floodlightcontroller.core.IOFSwitchListener;
@@ -32,7 +32,8 @@ import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.topology.NodePortTuple;
 
-public class SwitchSelectionModule implements IFloodlightModule, IFlowMessageListenner, IOFSwitchListener {
+public class SwitchSelectionModule
+		implements IFloodlightModule, IFlowMessageListener, IOFSwitchListener, ISwitchSelectionService {
 	protected static Logger logger;
 	private IFlowMessageService flowMessageService;
 	private IOFSwitchService switchService;
@@ -46,6 +47,7 @@ public class SwitchSelectionModule implements IFloodlightModule, IFlowMessageLis
 	private Map<Flow, FlowInfo> flows = new HashMap<Flow, FlowInfo>(FLOW_MAP_BASE_SIZE, FLOW_MAP_BASE_LOAD_FACTOR);
 	private Map<DatapathId, Set<Flow>> switchMatrix = new HashMap<DatapathId, Set<Flow>>(SWITCH_MAP_BASE_SIZE,
 			SWITCH_MAP_BASE_LOAD_FACTOR);
+	public Set<ISwitchSelectionUpdateListener> listeners = new HashSet<ISwitchSelectionUpdateListener>(10);
 
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleServices() {
@@ -112,6 +114,7 @@ public class SwitchSelectionModule implements IFloodlightModule, IFlowMessageLis
 			}
 			flowInfo.setPath(path);
 			// logger.info(path+"");
+			updateSwitchSelection();
 		}
 
 	}
@@ -123,12 +126,13 @@ public class SwitchSelectionModule implements IFloodlightModule, IFlowMessageLis
 	public void dealWithFlowRemoveMsg(FlowRemovedMessage msg) {
 
 		FlowStatics flowStatics = msg.getFlowStats();
-		for(DatapathId dpid : flows.get(flowStatics.getFlow()).getPath()) {
+		logger.info("removed: " + msg);
+		for (DatapathId dpid : flows.get(flowStatics.getFlow()).getPath()) {
 			switchMatrix.get(dpid).remove(flowStatics.getFlow());
-			logger.info("removed: "+switchMatrix.entrySet());
 		}
 		flows.remove(flowStatics.getFlow());
-		
+		updateSwitchSelection();
+
 	}
 
 	@Override
@@ -148,7 +152,6 @@ public class SwitchSelectionModule implements IFloodlightModule, IFlowMessageLis
 
 	@Override
 	public void switchPortChanged(DatapathId switchId, OFPortDesc port, PortChangeType type) {
-		// TODO Auto-generated method stub
 
 	}
 
@@ -161,6 +164,102 @@ public class SwitchSelectionModule implements IFloodlightModule, IFlowMessageLis
 		if (!switchMatrix.containsKey(switchId)) {
 			switchMatrix.put(switchId, new HashSet<Flow>(FLOW_MAP_BASE_SIZE, FLOW_MAP_BASE_LOAD_FACTOR));
 			logger.info(switchId.toString() + " switch add!");
+		}
+	}
+
+	/**
+	 * 
+	 */
+	public void updateSwitchSelection() {
+		Map<Integer, DatapathId> switchMap = new HashMap<Integer, DatapathId>();
+		Map<DatapathId, Integer> switchToInteger = new HashMap<DatapathId, Integer>();
+		Map<Integer, Flow> flowMap = new HashMap<Integer, Flow>();
+		Map<Flow, Integer> flowToInteger = new HashMap<Flow, Integer>();
+
+		int cnt = 0;
+		for (DatapathId dpid : switchMatrix.keySet()) {
+			switchMap.put(cnt, dpid);
+			switchToInteger.put(dpid, cnt);
+			cnt++;
+		}
+
+		int[][] matrix = new int[flows.size() + 5][switchMatrix.size() + 5];
+
+		cnt = 0;
+		for (Flow flow : flows.keySet()) {
+			flowMap.put(cnt, flow);
+			flowToInteger.put(flow, cnt);
+			for (DatapathId dpid : flows.get(flow).getPath()) {
+				matrix[cnt][switchToInteger.get(dpid)]++;
+			}
+			cnt++;
+		}
+
+		//
+		Set<Integer> set = new HashSet<Integer>();
+		int max = 0;
+		int maxDpid = -1;
+
+		List<DatapathId> switchSelected = new ArrayList<DatapathId>();
+
+		do {
+			max = 0;
+			maxDpid = -1;
+			for (int j = 0; j < matrix[0].length; ++j) {
+				if (set.contains(j))
+					continue;
+				int sum = 0;
+				for (int i = 0; i < matrix.length; ++i) {
+					sum += matrix[i][j];
+				}
+				if (sum > max) {
+					max = sum;
+					maxDpid = j;
+				}
+			}
+			if (maxDpid != -1) {
+				set.add(maxDpid);
+				switchSelected.add(switchMap.get(maxDpid));
+				for (Flow flow : switchMatrix.get(switchMap.get(maxDpid))) {
+					int idx = flowToInteger.get(flow);
+					for (int i = 0; i < matrix[idx].length; ++i) {
+						matrix[idx][i] = 0;
+					}
+				}
+			}
+		} while (maxDpid != -1);
+		// logger.info(switchSelected.toString());
+		notifySwitchSelectionUpdate(switchSelected); // notify all listeners 
+	}
+
+	/**
+	 * 
+	 * @param sws
+	 */
+	public void notifySwitchSelectionUpdate(List<DatapathId> sws) {
+		for (ISwitchSelectionUpdateListener listenner : listeners) {
+			listenner.switchSelectionUpdate(sws);
+		}
+	}
+
+	/**
+	 * 
+	 * @param matrix
+	 */
+	public void printMatrixTest(int[][] matrix) {
+		for (int i = 0; i < matrix.length; ++i) {
+			for (int j = 0; j < matrix[i].length; ++j) {
+				System.out.print(matrix[i][j] + " ");
+			}
+			System.out.println();
+		}
+		System.out.println();
+	}
+
+	@Override
+	synchronized public void addSwitchSelectionUpdateListener(ISwitchSelectionUpdateListener listener) {
+		if (!listeners.contains(listener)) {
+			listeners.add(listener);
 		}
 	}
 }

@@ -19,7 +19,7 @@ import net.floodlightcontroller.threadpool.IThreadPoolService;
 
 public class FlowMessageService implements IFloodlightModule, IFlowMessageService {
 	private BlockingQueue<FlowMessage> bq = new LinkedBlockingQueue<FlowMessage>();
-	private Map<FlowMessageType, List<IFlowMessageListenner>> listenners = new HashMap<FlowMessageType, List<IFlowMessageListenner>>();
+	private Map<FlowMessageType, List<IFlowMessageListener>> listenners = new HashMap<FlowMessageType, List<IFlowMessageListener>>();
 	private static IThreadPoolService threadPoolService;
 	private static final Logger log = LoggerFactory.getLogger(FlowMessageService.class);
 
@@ -41,7 +41,7 @@ public class FlowMessageService implements IFloodlightModule, IFlowMessageServic
 				try {
 					//log.info("Waiting for message...");
 					FlowMessage ifMsg = bq.take();
-					for (IFlowMessageListenner listenner : listenners.get(ifMsg.getMessageType())) {
+					for (IFlowMessageListener listenner : listenners.get(ifMsg.getMessageType())) {
 						//log.info(ifMsg.getMessageType()+"");
 						listenner.messageRecive(ifMsg.getMessageType(), ifMsg);
 						//log.info(ifMsg.getMessageType()+"");
@@ -61,15 +61,15 @@ public class FlowMessageService implements IFloodlightModule, IFlowMessageServic
 	 * @param listenner
 	 */
 	@Override
-	synchronized public void addFlowMessageListener(FlowMessageType type, IFlowMessageListenner listenner) {
-		List<IFlowMessageListenner> list = listenners.get(type);
+	synchronized public void addFlowMessageListener(FlowMessageType type, IFlowMessageListener listener) {
+		List<IFlowMessageListener> list = listenners.get(type);
 		if (list == null) {
-			list = new ArrayList<IFlowMessageListenner>();
-			list.add(listenner);
+			list = new ArrayList<IFlowMessageListener>();
+			list.add(listener);
 			listenners.put(type, list);
 		} else {
-			if (!list.contains(listenner)) {
-				list.add(listenner);
+			if (!list.contains(listener)) {
+				list.add(listener);
 			}
 		}
 	}

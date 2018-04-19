@@ -4,5 +4,5 @@ import net.floodlightcontroller.core.module.IFloodlightService;
 
 public interface IFlowMessageService extends IFloodlightService{
 	public void pubMessage(FlowMessage msg);
-	public void addFlowMessageListener(FlowMessageType type, IFlowMessageListenner listenner) ;
+	public void addFlowMessageListener(FlowMessageType type, IFlowMessageListener listener) ;
 }

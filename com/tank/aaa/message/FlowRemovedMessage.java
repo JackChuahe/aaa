@@ -34,4 +34,9 @@ public class FlowRemovedMessage extends FlowMessage {
 		}
 	}
 
+	@Override
+	public String toString() {
+		return "Flow removed message: " + this.flowStats.getFlow().toString();
+	}
+
 }

@@ -1,6 +1,6 @@
 package com.tank.aaa.message;
 
-public interface IFlowMessageListenner {
+public interface IFlowMessageListener {
 	/**
 	 * flow message interface
 	 * @param type
