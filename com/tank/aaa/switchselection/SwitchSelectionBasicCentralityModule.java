@@ -32,17 +32,17 @@ import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.topology.NodePortTuple;
 
-public class SwitchSelectionModule
+public class SwitchSelectionBasicCentralityModule
 		implements IFloodlightModule, IFlowMessageListener, IOFSwitchListener, ISwitchSelectionService {
 	protected static Logger logger;
 	private IFlowMessageService flowMessageService;
 	private IOFSwitchService switchService;
 
-	private static final int FLOW_MAP_BASE_SIZE = 1000;
-	private static final float FLOW_MAP_BASE_LOAD_FACTOR = (float) 1.0;
+	public static final int FLOW_MAP_BASE_SIZE = 1000;
+	public static final float FLOW_MAP_BASE_LOAD_FACTOR = (float) 1.0;
 
-	private static final int SWITCH_MAP_BASE_SIZE = 200;
-	private static final float SWITCH_MAP_BASE_LOAD_FACTOR = (float) 1.0;
+	public static final int SWITCH_MAP_BASE_SIZE = 200;
+	public static final float SWITCH_MAP_BASE_LOAD_FACTOR = (float) 1.0;
 
 	private Map<Flow, FlowInfo> flows = new HashMap<Flow, FlowInfo>(FLOW_MAP_BASE_SIZE, FLOW_MAP_BASE_LOAD_FACTOR);
 	private Map<DatapathId, Set<Flow>> switchMatrix = new HashMap<DatapathId, Set<Flow>>(SWITCH_MAP_BASE_SIZE,
@@ -51,12 +51,16 @@ public class SwitchSelectionModule
 
 	@Override
 	public Collection<Class<? extends IFloodlightService>> getModuleServices() {
-		return null;
+		Collection<Class<? extends IFloodlightService>> l = new ArrayList<Class<? extends IFloodlightService>>();
+		l.add(ISwitchSelectionService.class);
+		return l;
 	}
 
 	@Override
 	public Map<Class<? extends IFloodlightService>, IFloodlightService> getServiceImpls() {
-		return null;
+		Map<Class<? extends IFloodlightService>, IFloodlightService> m = new HashMap<Class<? extends IFloodlightService>, IFloodlightService>();
+		m.put(ISwitchSelectionService.class, this);
+		return m;
 	}
 
 	@Override
@@ -200,7 +204,8 @@ public class SwitchSelectionModule
 		int max = 0;
 		int maxDpid = -1;
 
-		List<DatapathId> switchSelected = new ArrayList<DatapathId>();
+		Set<DatapathId> switchSelected = new HashSet<DatapathId>();
+		Map<DatapathId, Integer> switchCentrity = new HashMap<DatapathId, Integer>();
 
 		do {
 			max = 0;
@@ -220,6 +225,8 @@ public class SwitchSelectionModule
 			if (maxDpid != -1) {
 				set.add(maxDpid);
 				switchSelected.add(switchMap.get(maxDpid));
+				switchCentrity.put(switchMap.get(maxDpid), max);
+
 				for (Flow flow : switchMatrix.get(switchMap.get(maxDpid))) {
 					int idx = flowToInteger.get(flow);
 					for (int i = 0; i < matrix[idx].length; ++i) {
@@ -229,16 +236,16 @@ public class SwitchSelectionModule
 			}
 		} while (maxDpid != -1);
 		// logger.info(switchSelected.toString());
-		notifySwitchSelectionUpdate(switchSelected); // notify all listeners 
+		notifySwitchSelectionUpdate(switchSelected, switchCentrity); // notify all listeners
 	}
 
 	/**
 	 * 
 	 * @param sws
 	 */
-	public void notifySwitchSelectionUpdate(List<DatapathId> sws) {
+	public void notifySwitchSelectionUpdate(Set<DatapathId> sws, Map<DatapathId, Integer> switchCentrity) {
 		for (ISwitchSelectionUpdateListener listenner : listeners) {
-			listenner.switchSelectionUpdate(sws);
+			listenner.switchSelectionUpdate(sws,switchCentrity);
 		}
 	}
 
