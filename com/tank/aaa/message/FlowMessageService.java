@@ -22,14 +22,14 @@ public class FlowMessageService implements IFloodlightModule, IFlowMessageServic
 	private Map<FlowMessageType, List<IFlowMessageListener>> listenners = new HashMap<FlowMessageType, List<IFlowMessageListener>>();
 	private static IThreadPoolService threadPoolService;
 	private static final Logger log = LoggerFactory.getLogger(FlowMessageService.class);
-
+	private Thread t;
 	/**
 	 * 
 	 * @param msg
 	 */
 	@Override
 	public void pubMessage(FlowMessage msg) {
-		bq.offer(msg);
+			bq.offer(msg);
 	}
 
 	class NotifyReciver implements Runnable {
@@ -39,14 +39,15 @@ public class FlowMessageService implements IFloodlightModule, IFlowMessageServic
 			log.info("Start up message dispatch service successful");
 			while (true) {
 				try {
-					//log.info("Waiting for message...");
+					// log.info("Waiting for message...");
 					FlowMessage ifMsg = bq.take();
+						
 					for (IFlowMessageListener listenner : listenners.get(ifMsg.getMessageType())) {
-						//log.info(ifMsg.getMessageType()+"");
+						// log.info(ifMsg.getMessageType()+"");
 						listenner.messageRecive(ifMsg.getMessageType(), ifMsg);
-						//log.info(ifMsg.getMessageType()+"");
+						// log.info(ifMsg.getMessageType()+"");
 					}
-					//log.info(ifMsg.getMessageType()+"");
+					// log.info(ifMsg.getMessageType()+"");
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
@@ -54,6 +55,7 @@ public class FlowMessageService implements IFloodlightModule, IFlowMessageServic
 		}
 
 	}
+
 
 	/**
 	 * 

@@ -55,9 +55,9 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 		for (DatapathId dpid : sws) {
 			if (total != 0) {
 				int samplingRate = (int) Math.floor((double) (dpiMaxRate * switchCentrity.get(dpid)) / total);
-				sendUpdateSamplingRate(dpid, samplingRate, dpiMaxRate - samplingRate);
-				logger.info("Sampling rate: " + dpid + ": Sampling VS Drop:[" + samplingRate + " - "
-						+ (dpiMaxRate - samplingRate) + "]");
+				sendUpdateSamplingRate(dpid, 10, 1/* - samplingRate */);
+				System.out.println(
+						"Sampling rate: " + dpid + ": Sampling VS Drop:[" + samplingRate + " - " + (dpiMaxRate) + "]");
 			}
 		}
 
@@ -120,14 +120,14 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	public void sendUpdateSamplingRate(DatapathId dpid, int samplingWeight, int dropWeight) {
 		List<OFBucket> buckets = generateBuckets(samplingWeight, dropWeight);
 		switchService.getSwitch(dpid).write(factory.buildGroupModify().setGroup(OFGroup.of(0x01))
-				.setGroupType(OFGroupType.SELECT).setBuckets(buckets).build());
+				.setGroupType(OFGroupType.INDIRECT).setBuckets(buckets).build());
 	}
 
 	@Override
 	public void switchAdded(DatapathId switchId) {
 
-		List<OFBucket> buckets = generateBuckets(0, 1);
-		switchService.getSwitch(switchId).write(factory.buildGroupAdd().setGroupType(OFGroupType.SELECT)
+		List<OFBucket> buckets = generateBuckets(0, 100);
+		switchService.getSwitch(switchId).write(factory.buildGroupAdd().setGroupType(OFGroupType.INDIRECT)
 				.setGroup(OFGroup.of(0x01)).setBuckets(buckets).build());
 
 		logger.info("HashBased send group add to switch: " + switchId);
@@ -144,20 +144,25 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 		List<OFBucket> buckets = new ArrayList<OFBucket>();
 		List<OFAction> actions = new ArrayList<OFAction>();
 		OFActionOutput.Builder outPutDPISystemPort = factory.actions().buildOutput();
-		outPutDPISystemPort.setPort(OFPort.of(1));
+		outPutDPISystemPort.setPort(OFPort.of(3));
 		outPutDPISystemPort.setMaxLen(Integer.MAX_VALUE);
 		actions.add(outPutDPISystemPort.build());
 
 		List<OFAction> bucketDropAction = new ArrayList<OFAction>();
 
-		OFBucket bkForwardToDPI = factory.buildBucket().setActions(actions).setWeight(samplingWeight).setWatchGroup(OFGroup.ANY)
-				.setWatchPort(OFPort.ANY).build();
+		if (samplingWeight != 0) {
 
-		OFBucket bkDrop = factory.buildBucket().setActions(bucketDropAction).setWeight(dropWeight).setWatchGroup(OFGroup.ANY)
-				.setWatchPort(OFPort.ANY).build();
+			OFBucket bkForwardToDPI = factory.buildBucket().setActions(actions)/*.setWeight(samplingWeight)*/
+					.setWatchGroup(OFGroup.ANY).setWatchPort(OFPort.ANY).build();
+			buckets.add(bkForwardToDPI);
+		} else {
 
-		buckets.add(bkForwardToDPI);
-		buckets.add(bkDrop);
+			OFBucket bkDrop = factory.buildBucket().setActions(bucketDropAction)/*.setWeight(dropWeight)*/
+					.setWatchGroup(OFGroup.ANY).setWatchPort(OFPort.ANY).build();
+
+			buckets.add(bkDrop);
+
+		}
 		return buckets;
 	}
 

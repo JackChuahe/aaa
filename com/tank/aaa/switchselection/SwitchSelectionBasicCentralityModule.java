@@ -2,6 +2,7 @@ package com.tank.aaa.switchselection;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -22,6 +23,7 @@ import com.tank.aaa.message.FlowMessageType;
 import com.tank.aaa.message.FlowRemovedMessage;
 import com.tank.aaa.message.IFlowMessageListener;
 import com.tank.aaa.message.IFlowMessageService;
+import com.tank.infocollector.SwitchSelectionInfoCollector;
 
 import net.floodlightcontroller.core.IOFSwitchListener;
 import net.floodlightcontroller.core.PortChangeType;
@@ -44,9 +46,10 @@ public class SwitchSelectionBasicCentralityModule
 	public static final int SWITCH_MAP_BASE_SIZE = 200;
 	public static final float SWITCH_MAP_BASE_LOAD_FACTOR = (float) 1.0;
 
-	private Map<Flow, FlowInfo> flows = new HashMap<Flow, FlowInfo>(FLOW_MAP_BASE_SIZE, FLOW_MAP_BASE_LOAD_FACTOR);
-	private Map<DatapathId, Set<Flow>> switchMatrix = new HashMap<DatapathId, Set<Flow>>(SWITCH_MAP_BASE_SIZE,
-			SWITCH_MAP_BASE_LOAD_FACTOR);
+	private Map<Flow, FlowInfo> flows = Collections
+			.synchronizedMap(new HashMap<Flow, FlowInfo>(FLOW_MAP_BASE_SIZE, FLOW_MAP_BASE_LOAD_FACTOR));
+	private Map<DatapathId, Set<Flow>> switchMatrix = Collections
+			.synchronizedMap(new HashMap<DatapathId, Set<Flow>>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR));
 	public Set<ISwitchSelectionUpdateListener> listeners = new HashSet<ISwitchSelectionUpdateListener>(10);
 
 	@Override
@@ -87,6 +90,7 @@ public class SwitchSelectionBasicCentralityModule
 
 	@Override
 	public void messageRecive(FlowMessageType type, FlowMessage msg) {
+		//logger.info("msg : " + msg.toString());
 		switch (type) {
 		case FLOW_ADD:
 			dealWithFlowAddMsg((FlowAddMessage) msg);
@@ -130,13 +134,13 @@ public class SwitchSelectionBasicCentralityModule
 	public void dealWithFlowRemoveMsg(FlowRemovedMessage msg) {
 
 		FlowStatics flowStatics = msg.getFlowStats();
-		logger.info("removed: " + msg);
 		for (DatapathId dpid : flows.get(flowStatics.getFlow()).getPath()) {
 			switchMatrix.get(dpid).remove(flowStatics.getFlow());
 		}
-		flows.remove(flowStatics.getFlow());
-		updateSwitchSelection();
 
+		flows.remove(flowStatics.getFlow()); 
+
+		updateSwitchSelection();
 	}
 
 	@Override
@@ -245,7 +249,7 @@ public class SwitchSelectionBasicCentralityModule
 	 */
 	public void notifySwitchSelectionUpdate(Set<DatapathId> sws, Map<DatapathId, Integer> switchCentrity) {
 		for (ISwitchSelectionUpdateListener listenner : listeners) {
-			listenner.switchSelectionUpdate(sws,switchCentrity);
+			listenner.switchSelectionUpdate(sws, switchCentrity);
 		}
 	}
 
@@ -268,5 +272,15 @@ public class SwitchSelectionBasicCentralityModule
 		if (!listeners.contains(listener)) {
 			listeners.add(listener);
 		}
+	}
+
+	@Override
+	public Map<Flow, FlowInfo> getFlowInformation() {
+		return flows;
+	}
+
+	@Override
+	public Map<DatapathId, Set<Flow>> getFlowMatrix() {
+		return switchMatrix;
 	}
 }
