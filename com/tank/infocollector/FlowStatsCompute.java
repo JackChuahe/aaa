@@ -3,7 +3,9 @@ package com.tank.infocollector;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import org.projectfloodlight.openflow.protocol.OFFlowStatsEntry;
 import org.projectfloodlight.openflow.protocol.match.Match;
@@ -34,8 +36,11 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 
 	private IFlowMessageService flowMessageService;
 	protected static Logger logger;
+
 	private static Map<Flow, FlowInfo> flowInfos = new HashMap<Flow, FlowInfo>(FLOW_MAP_BASE_SIZE,
 			FLOW_MAP_BASE_LOAD_FACTOR);
+
+	public Set<FlowStatsUpdateListener> listeners = new HashSet<FlowStatsUpdateListener>();
 
 	@Override
 	public Map<Flow, FlowInfo> getFlowStats() {
@@ -127,15 +132,26 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 					}
 				}
 			}
+
+			// notify flow stats update
+			for (FlowStatsUpdateListener listener : listeners) {
+				listener.flowStatsUpdate();
+			}
+
 			// fsuMsg.getFlowStats().getEntries().get(0)
-			//logger.info("MessageRecived: Flow Stats Updated: " + flowInfos.toString());
+			// logger.info("MessageRecived: Flow Stats Updated: " + flowInfos.toString());
 			break;
 		case FLOW_REMOVE:
 			FlowRemovedMessage frMsg = (FlowRemovedMessage) msg;
 			FlowStatics flowStatics = frMsg.getFlowStats();
 			flowInfos.remove(flowStatics.getFlow());
-			//logger.info("flow Infos : " + flowInfos.toString());
+			// logger.info("flow Infos : " + flowInfos.toString());
 			break;
 		}
+	}
+
+	@Override
+	public void addFlowStatsUpdateListener(FlowStatsUpdateListener listener) {
+		listeners.add(listener);
 	}
 }

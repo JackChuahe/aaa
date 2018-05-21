@@ -9,4 +9,5 @@ import net.floodlightcontroller.core.module.IFloodlightService;
 
 public interface IFlowStatsService extends IFloodlightService {
 	public Map<Flow,FlowInfo> getFlowStats();
+	public void addFlowStatsUpdateListener(FlowStatsUpdateListener listener);
 }
