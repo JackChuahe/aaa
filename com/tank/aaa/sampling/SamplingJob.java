@@ -17,13 +17,27 @@ import ch.qos.logback.classic.Logger;
 
 public class SamplingJob implements org.quartz.Job {
 
+	private long xid = -1;
+
 	@Override
 	public void execute(JobExecutionContext ctx) throws JobExecutionException {
+
+		Object xidTmp = ctx.getJobDetail().getJobDataMap().get("xid");
+		if (xidTmp != null) {
+			xid = (Long) xidTmp;
+		} else {
+			HashBasedUniformSampling.logger.info("xid get is null, sampling job exit.");
+			return;
+		}
 		String dpid = ctx.getJobDetail().getJobDataMap().getString("dpid");
-		HashBasedUniformSampling.logger.info("Job: "+dpid+" sampling. At: " + System.currentTimeMillis());
 		// sampling
 		Map<String, SwitchSamplingInfo> map = HashBasedUniformSampling.getSwitchSamplingInfo();
 		sendSamplingMsg(dpid, map);
+
+		if (xid != HashBasedUniformSampling.xid) {
+			HashBasedUniformSampling.logger.info("xid "+xid+" different, sampling job exit. now xid: "+HashBasedUniformSampling.xid);
+			return;
+		}
 
 		if (map.get(dpid).getInterval() != 0) { // sampling all the time
 			// set stop sampling task
@@ -40,11 +54,13 @@ public class SamplingJob implements org.quartz.Job {
 	 * @param dpid
 	 */
 	public void sendSamplingMsg(String dpid, Map<String, SwitchSamplingInfo> map) {
-		HashBasedUniformSampling.getSwitchService().getSwitch(map.get(dpid).getDpid())
-				.write(HashBasedUniformSampling.SamplingMsg);
 
 		HashBasedUniformSampling.getCurrentSamplingSwitches().add(dpid);
-
+		if (xid == HashBasedUniformSampling.xid) {
+			HashBasedUniformSampling.getSwitchService().getSwitch(map.get(dpid).getDpid())
+					.write(HashBasedUniformSampling.SamplingMsg);
+			HashBasedUniformSampling.logger.info("Job: " + dpid + " sampling. At: " + System.currentTimeMillis());
+		}
 	}
 
 	/**
@@ -55,9 +71,9 @@ public class SamplingJob implements org.quartz.Job {
 	public void setStopSamplingTask(Scheduler scheduler, String dpid, Map<String, SwitchSamplingInfo> map) {
 
 		long stopSamplingTime = System.currentTimeMillis() + map.get(dpid).getSamplingTime();
-		HashBasedUniformSampling.logger.info("set "+dpid+" next stop sampling time: " + stopSamplingTime);
+		HashBasedUniformSampling.logger.info("set " + dpid + " next stop sampling time: " + stopSamplingTime);
 
-		JobDetail stopSamplingJob = JobBuilder.newJob(StopSamplingJob.class).usingJobData("dpid", dpid)
+		JobDetail stopSamplingJob = JobBuilder.newJob(StopSamplingJob.class).usingJobData("dpid", dpid).usingJobData("xid",xid)
 				.withIdentity("job-" + "-stop-" + dpid, "group").build();
 
 		Trigger trigger = TriggerBuilder.newTrigger().withIdentity("trigger-" + "-stop-" + dpid, "group")

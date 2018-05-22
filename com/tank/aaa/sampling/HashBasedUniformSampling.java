@@ -82,14 +82,17 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	public static Set<String> workingSwitches = Collections
 			.synchronizedSet(new HashSet<String>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR));
 
+	public static long xid = 0; // 0: stop sampling
+
 	@Override
 	public void switchSelectionUpdate(Set<DatapathId> sws, Map<DatapathId, Integer> switchCentrity) {
 
 		logger.info("Switch sampling update: " + sws);
-
+		xid++;
+		logger.info("xid is: "+xid);
 		clearJobs(); // clear jobs
-		calculateSamplingRateForSwitches(sws); // compute new sampling strategy
 		stopSamplingSwitchs(); // stop sampling switches
+		calculateSamplingRateForSwitches(sws); // compute new sampling strategy
 		startNewSampling(sws);
 	}
 
@@ -102,9 +105,10 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 			if (!scheduler.isStarted())
 				return;
 
-			workingSwitches.clear();// clear all are working switches in quartz
+			// scheduler.shutdown();
 			scheduler.shutdown(true);
 			scheduler = StdSchedulerFactory.getDefaultScheduler();
+			workingSwitches.clear();// clear all are working switches in quartz
 
 		} catch (SchedulerException e) {
 			logger.error(e.getMessage());
@@ -119,8 +123,10 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 		logger.info("start new sampling scheduler...");
 		for (DatapathId dpid : sws) {
 
+			currentSamplingSws.add(dpid.toString());// ;
+
 			JobDetail samplingJob = JobBuilder.newJob(SamplingJob.class).usingJobData("dpid", dpid.toString())
-					.withIdentity("job-" + "-sampling-" + dpid.toString(), "group").build();
+					.usingJobData("xid", xid).withIdentity("job-" + "-sampling-" + dpid.toString(), "group").build();
 
 			Trigger trigger = TriggerBuilder.newTrigger()
 					.withIdentity("trigger-" + "-sampling-" + dpid.toString(), "group").startNow()// startAt(new
@@ -155,10 +161,12 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	public void stopSamplingSwitchs() {
 		logger.info("Stop sampling switches");
 		for (String dpid : currentSamplingSws) {
+			logger.info(dpid+" ++++++++++++++++++++++++++");
 			switchService.getSwitch(mapForSwitchSamplingInfo.get(dpid).getDpid()).write(DropMsg);
 			logger.info("send stop sampling msg to: " + dpid);
 			// stop sampling
 		}
+
 		currentSamplingSws.clear();
 	}
 
@@ -178,7 +186,7 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 			double swPktps = 0.0;
 			for (Flow flow : switchMatrix.get(dpid)) {
 
-				//logger.info(mapForFlowInfo.toString());
+				// logger.info(mapForFlowInfo.toString());
 				FlowInfo flowInfo = mapForFlowInfo.get(flow);
 				if (flowInfo != null) {
 					total += flowInfo.getPkts();
@@ -481,7 +489,7 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 		logger.info("set next stop sampling time: " + stopSamplingTime);
 
 		JobDetail stopSamplingJob = JobBuilder.newJob(StopSamplingJob.class).usingJobData("dpid", dpid)
-				.withIdentity("job-" + "-stop-" + dpid, "group").build();
+				.usingJobData("xid", xid).withIdentity("job-" + "-stop-" + dpid, "group").build();
 
 		Trigger trigger = TriggerBuilder.newTrigger().withIdentity("trigger-" + "-stop-" + dpid, "group")
 				.startAt(new Date(stopSamplingTime))
