@@ -19,8 +19,8 @@ public class SamplingJob implements org.quartz.Job {
 
 	@Override
 	public void execute(JobExecutionContext ctx) throws JobExecutionException {
-		HashBasedUniformSampling.logger.info("Job:  sampling. At: " + System.currentTimeMillis());
 		String dpid = ctx.getJobDetail().getJobDataMap().getString("dpid");
+		HashBasedUniformSampling.logger.info("Job: "+dpid+" sampling. At: " + System.currentTimeMillis());
 		// sampling
 		Map<String, SwitchSamplingInfo> map = HashBasedUniformSampling.getSwitchSamplingInfo();
 		sendSamplingMsg(dpid, map);
@@ -28,6 +28,9 @@ public class SamplingJob implements org.quartz.Job {
 		if (map.get(dpid).getInterval() != 0) { // sampling all the time
 			// set stop sampling task
 			setStopSamplingTask(ctx.getScheduler(), dpid, map);
+			HashBasedUniformSampling.workingSwitches.add(dpid);
+		} else {
+			HashBasedUniformSampling.workingSwitches.remove(dpid);
 		}
 
 	}
@@ -52,7 +55,7 @@ public class SamplingJob implements org.quartz.Job {
 	public void setStopSamplingTask(Scheduler scheduler, String dpid, Map<String, SwitchSamplingInfo> map) {
 
 		long stopSamplingTime = System.currentTimeMillis() + map.get(dpid).getSamplingTime();
-		HashBasedUniformSampling.logger.info("set next stop sampling time: " + stopSamplingTime);
+		HashBasedUniformSampling.logger.info("set "+dpid+" next stop sampling time: " + stopSamplingTime);
 
 		JobDetail stopSamplingJob = JobBuilder.newJob(StopSamplingJob.class).usingJobData("dpid", dpid)
 				.withIdentity("job-" + "-stop-" + dpid, "group").build();

@@ -3,6 +3,7 @@ package com.tank.aaa.sampling;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -63,8 +64,9 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	private static Set<String> currentSamplingSws = Collections
 			.synchronizedSet(new HashSet<String>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR));
 
-	private static Map<String, SwitchSamplingInfo> mapForSwitchSamplingInfo = Collections.synchronizedMap(
-			new HashMap<String, SwitchSamplingInfo>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR));
+	private static Map<String, SwitchSamplingInfo> mapForSwitchSamplingInfo = Collections
+			.synchronizedMap(Collections.synchronizedMap(
+					new HashMap<String, SwitchSamplingInfo>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR)));
 
 	private final OFFactory factory = OFFactories.getFactory(OFVersion.OF_13);
 
@@ -77,13 +79,16 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	public static OFGroupModify SamplingMsg = null;
 	public static OFGroupModify DropMsg = null;
 
+	public static Set<String> workingSwitches = Collections
+			.synchronizedSet(new HashSet<String>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR));
+
 	@Override
 	public void switchSelectionUpdate(Set<DatapathId> sws, Map<DatapathId, Integer> switchCentrity) {
 
 		logger.info("Switch sampling update: " + sws);
 
-		calculateSamplingRateForSwitches(sws); // compute new sampling strategy
 		clearJobs(); // clear jobs
+		calculateSamplingRateForSwitches(sws); // compute new sampling strategy
 		stopSamplingSwitchs(); // stop sampling switches
 		startNewSampling(sws);
 	}
@@ -97,6 +102,7 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 			if (!scheduler.isStarted())
 				return;
 
+			workingSwitches.clear();// clear all are working switches in quartz
 			scheduler.shutdown(true);
 			scheduler = StdSchedulerFactory.getDefaultScheduler();
 
@@ -172,7 +178,7 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 			double swPktps = 0.0;
 			for (Flow flow : switchMatrix.get(dpid)) {
 
-				logger.info(mapForFlowInfo.toString());
+				//logger.info(mapForFlowInfo.toString());
 				FlowInfo flowInfo = mapForFlowInfo.get(flow);
 				if (flowInfo != null) {
 					total += flowInfo.getPkts();
@@ -420,6 +426,8 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 				SWITCH_MAP_BASE_LOAD_FACTOR);
 		Map<Flow, FlowInfo> mapForFlowInfo = flowStatsService.getFlowStats();
 
+		logger.info(mapForFlowInfo.toString());
+
 		double total = 0.0;
 		for (String dpid : mapForSwitchSamplingInfo.keySet()) {
 			double swPktps = 0.0;
@@ -455,9 +463,40 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 				}
 			}
 
+			if (!workingSwitches.contains(dpid) && mapForSwitchSamplingInfo.get(dpid).getInterval() != 0) {
+				reSampling(dpid, mapForSwitchSamplingInfo.get(dpid).getSamplingTime());
+				workingSwitches.add(dpid);
+
+			}
 			// logger.info(dpid + "- samplingTime: " +
 			// mapForSwitchSamplingInfo.get(dpid).getSamplingTime() + " Interval: "
 			// + mapForSwitchSamplingInfo.get(dpid).getInterval());
 		}
 	}
+
+	public void reSampling(String dpid, long samplingTime) {
+		logger.info("Reschedule sampling... ");
+
+		long stopSamplingTime = System.currentTimeMillis() + samplingTime;
+		logger.info("set next stop sampling time: " + stopSamplingTime);
+
+		JobDetail stopSamplingJob = JobBuilder.newJob(StopSamplingJob.class).usingJobData("dpid", dpid)
+				.withIdentity("job-" + "-stop-" + dpid, "group").build();
+
+		Trigger trigger = TriggerBuilder.newTrigger().withIdentity("trigger-" + "-stop-" + dpid, "group")
+				.startAt(new Date(stopSamplingTime))
+				.withSchedule(SimpleScheduleBuilder.simpleSchedule().withIntervalInSeconds(0).withRepeatCount(0)) // for
+																													// only
+																													// once
+				.build();
+		try {
+			if (scheduler.isStarted()) {
+				scheduler.scheduleJob(stopSamplingJob, trigger);
+			}
+		} catch (SchedulerException e) {
+			logger.error(e.getMessage());
+		}
+
+	}
+
 }
