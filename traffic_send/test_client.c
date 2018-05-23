@@ -20,10 +20,9 @@ int main()
     int sockfd;
     int tempfd;
     struct sockaddr_in s_addr_in;
+    struct sockaddr_in client;
     char data_send[BUFFER_LENGTH];
-    char data_recv[BUFFER_LENGTH];
     memset(data_send,0,BUFFER_LENGTH);
-    memset(data_recv,0,BUFFER_LENGTH);
 
     sockfd = socket(AF_INET,SOCK_STREAM,0);       //ipv4,TCP
     if(sockfd == -1)
@@ -37,6 +36,15 @@ int main()
     s_addr_in.sin_addr.s_addr = inet_addr("127.0.0.1");      //trans char * to in_addr_t
     s_addr_in.sin_family = AF_INET;
     s_addr_in.sin_port = htons(SOCK_PORT);
+
+    client.sin_family = AF_INET;
+    client.sin_addr.s_addr = htonl(INADDR_ANY);
+    client.sin_port = htons(50000);
+    if (bind( sockfd, (struct sockaddr*) &client, sizeof(client)) == -1) {
+       printf("bind() failed.\n");
+       shutdown(sockfd,SHUT_WR);
+       return 1;
+    }
 
     tempfd = connect(sockfd,(struct sockaddr *)(&s_addr_in),sizeof(s_addr_in));
     if(tempfd == -1)
