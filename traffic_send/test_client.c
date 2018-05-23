@@ -23,6 +23,7 @@ int main()
     struct sockaddr_in client;
     char data_send[BUFFER_LENGTH];
     memset(data_send,0,BUFFER_LENGTH);
+    char *sendData = "1231234567235724583782683456789278345790357045780457896894579";
 
     sockfd = socket(AF_INET,SOCK_STREAM,0);       //ipv4,TCP
     if(sockfd == -1)
@@ -53,12 +54,16 @@ int main()
         exit(1);
     }
 
+    struct timeval delay;
+    delay.tv_sec = 0;
+    delay.tv_usec = 500 * 1000; // 20 ms
+
     while(1)
     {
         printf("Please input something you wanna say(input \"quit\" to quit):\n");
-        gets(data_send);
+        //gets(data_send);
         //scanf("%[^\n]",data_send);         //or you can also use this
-        tempfd = write(sockfd,data_send,BUFFER_LENGTH);
+        tempfd = write(sockfd,sendData,strlen(sendData));
         if(tempfd == -1)
         {
             fprintf(stderr,"write error\n");
@@ -78,6 +83,8 @@ int main()
             memset(data_recv,0,BUFFER_LENGTH);
             */
         }
+        usleep(500*1000);
+        //select(0,NULL,NULL,NULL,&delay);
     }
 
     int ret = shutdown(sockfd,SHUT_WR);       //or you can use func close()--<unistd.h> to close the fd
