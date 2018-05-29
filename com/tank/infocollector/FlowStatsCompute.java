@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -83,52 +84,58 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 	}
 
 	@Override
-	public void messageRecive(FlowMessageType type, FlowMessage msg) {
-		switch (type) {
+	public void messageRecive(List<FlowMessage> msgs) {
+		if(msgs.size() == 0)return;
+		switch (msgs.get(0).getMessageType()) {
 		case FLOW_STATS_UPDATE:
-			FlowStatsUpdateMessage fsuMsg = (FlowStatsUpdateMessage) msg;
-			for (OFFlowStatsEntry entry : fsuMsg.getFlowStats().getEntries()) {
-				Match match = entry.getMatch();
-				Flow flow = null;
-				if (match.get(MatchField.IP_PROTO).equals(IpProtocol.TCP)) {
-					flow = new Flow(match.get(MatchField.IPV4_SRC).getInt(), match.get(MatchField.IPV4_DST).getInt(),
-							match.get(MatchField.IP_PROTO).getIpProtocolNumber(),
-							match.get(MatchField.TCP_SRC).getPort(), match.get(MatchField.TCP_DST).getPort());
-				} else if (match.get(MatchField.IP_PROTO).equals(IpProtocol.UDP)) {
-					flow = new Flow(match.get(MatchField.IPV4_SRC).getInt(), match.get(MatchField.IPV4_DST).getInt(),
-							match.get(MatchField.IP_PROTO).getIpProtocolNumber(),
-							match.get(MatchField.UDP_SRC).getPort(), match.get(MatchField.UDP_DST).getPort());
-				} // get flow
-				if (flow != null) {
-					FlowInfo flowInfo = null;
-					double duration = ((double) entry.getDurationSec())
-							+ (double) entry.getDurationNsec() / (double) (10e9);
+			for (FlowMessage msg : msgs) {
 
-					if ((flowInfo = flowInfos.get(flow)) != null) {
-						double durationTemp = duration - flowInfo.getDuration();
-						double pkts = ((double) (entry.getPacketCount().getValue() - flowInfo.getPacketCount()))
-								/ durationTemp;
-						flowInfo.setPkts(pkts);
+				FlowStatsUpdateMessage fsuMsg = (FlowStatsUpdateMessage) msg;
+				for (OFFlowStatsEntry entry : fsuMsg.getFlowStats().getEntries()) {
+					Match match = entry.getMatch();
+					Flow flow = null;
+					if (match.get(MatchField.IP_PROTO).equals(IpProtocol.TCP)) {
+						flow = new Flow(match.get(MatchField.IPV4_SRC).getInt(),
+								match.get(MatchField.IPV4_DST).getInt(),
+								match.get(MatchField.IP_PROTO).getIpProtocolNumber(),
+								match.get(MatchField.TCP_SRC).getPort(), match.get(MatchField.TCP_DST).getPort());
+					} else if (match.get(MatchField.IP_PROTO).equals(IpProtocol.UDP)) {
+						flow = new Flow(match.get(MatchField.IPV4_SRC).getInt(),
+								match.get(MatchField.IPV4_DST).getInt(),
+								match.get(MatchField.IP_PROTO).getIpProtocolNumber(),
+								match.get(MatchField.UDP_SRC).getPort(), match.get(MatchField.UDP_DST).getPort());
+					} // get flow
+					if (flow != null) {
+						FlowInfo flowInfo = null;
+						double duration = ((double) entry.getDurationSec())
+								+ (double) entry.getDurationNsec() / (double) (10e9);
 
-						double bps = ((double) entry.getByteCount().getValue() - flowInfo.getByteCount())
-								/ durationTemp;
+						if ((flowInfo = flowInfos.get(flow)) != null) {
+							double durationTemp = duration - flowInfo.getDuration();
+							double pkts = ((double) (entry.getPacketCount().getValue() - flowInfo.getPacketCount()))
+									/ durationTemp;
+							flowInfo.setPkts(pkts);
 
-						flowInfo.setBps(bps);
+							double bps = ((double) entry.getByteCount().getValue() - flowInfo.getByteCount())
+									/ durationTemp;
 
-						flowInfo.setBytecount(entry.getByteCount().getValue());
-						flowInfo.setPacketCount(entry.getPacketCount().getValue());
-						flowInfo.setDuration(duration);
-					} else {
+							flowInfo.setBps(bps);
 
-						double pkts = ((double) entry.getPacketCount().getValue()) / duration;
-						double bps = ((double) entry.getByteCount().getValue()) / duration;
-						flowInfo = new FlowInfo();
-						flowInfo.setPkts(pkts);
-						flowInfo.setBps(bps);
-						flowInfo.setDuration(duration);
-						flowInfo.setPacketCount(entry.getPacketCount().getValue());
-						flowInfo.setBytecount(entry.getByteCount().getValue());
-						flowInfos.put(flow, flowInfo);
+							flowInfo.setBytecount(entry.getByteCount().getValue());
+							flowInfo.setPacketCount(entry.getPacketCount().getValue());
+							flowInfo.setDuration(duration);
+						} else {
+
+							double pkts = ((double) entry.getPacketCount().getValue()) / duration;
+							double bps = ((double) entry.getByteCount().getValue()) / duration;
+							flowInfo = new FlowInfo();
+							flowInfo.setPkts(pkts);
+							flowInfo.setBps(bps);
+							flowInfo.setDuration(duration);
+							flowInfo.setPacketCount(entry.getPacketCount().getValue());
+							flowInfo.setBytecount(entry.getByteCount().getValue());
+							flowInfos.put(flow, flowInfo);
+						}
 					}
 				}
 			}
@@ -142,10 +149,12 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 			// logger.info("MessageRecived: Flow Stats Updated: " + flowInfos.toString());
 			break;
 		case FLOW_REMOVE:
-			FlowRemovedMessage frMsg = (FlowRemovedMessage) msg;
-			FlowStatics flowStatics = frMsg.getFlowStats();
-			flowInfos.remove(flowStatics.getFlow());
-			// logger.info("flow Infos : " + flowInfos.toString());
+			for (FlowMessage msg : msgs) {
+				FlowRemovedMessage frMsg = (FlowRemovedMessage) msg;
+				FlowStatics flowStatics = frMsg.getFlowStats();
+				flowInfos.remove(flowStatics.getFlow());
+				logger.info("flow Infos : Flow Info Size: " + flowInfos.size());
+			}
 			break;
 		}
 	}

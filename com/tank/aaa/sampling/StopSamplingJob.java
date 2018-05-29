@@ -15,29 +15,25 @@ import org.quartz.TriggerBuilder;
 
 public class StopSamplingJob implements org.quartz.Job {
 
-	private long xid = -1;
-
 	@Override
 	public void execute(JobExecutionContext ctx) throws JobExecutionException {
-		Object xidTmp = ctx.getJobDetail().getJobDataMap().get("xid");
-		if (xidTmp != null) {
-			xid = (Long) xidTmp;
-		} else {
-			HashBasedUniformSampling.logger.info("xid is get null, stop sampling exit.");
-			return;
-		}
+
 		String dpid = ctx.getJobDetail().getJobDataMap().getString("dpid");
+		Long xidTmp = HashBasedUniformSampling.switchMapXid.get(dpid);
 		HashBasedUniformSampling.logger.info("Job: " + dpid + " Stop Sampling. At: " + System.currentTimeMillis());
 
-		if (xid != HashBasedUniformSampling.xid) {
-			HashBasedUniformSampling.logger
-					.info("xid +" + xid + " different, stop sampling exit. now xid: " + HashBasedUniformSampling.xid);
-			return;
-		}
 		// sampling
 		Map<String, SwitchSamplingInfo> map = HashBasedUniformSampling.getSwitchSamplingInfo();
-		sendStopSamplingMsg(dpid, map);
 		// set start sampling task
+		if ((xidTmp == null || xidTmp != HashBasedUniformSampling.xid)
+				&& !HashBasedUniformSampling.nextTimeSws.contains(map.get(dpid).getDpid())) {
+			HashBasedUniformSampling.logger
+					.error("sampling job: " + dpid + " have no xid or xid different. exit job! My xid: " + xidTmp
+							+ " now Xid: " + HashBasedUniformSampling.xid);
+			return;
+		}
+
+		sendStopSamplingMsg(dpid, map);
 		setStartSamplingTask(ctx.getScheduler(), dpid, map);
 
 	}
@@ -63,7 +59,7 @@ public class StopSamplingJob implements org.quartz.Job {
 		long startSamplingTime = System.currentTimeMillis() + map.get(dpid).getInterval();
 		HashBasedUniformSampling.logger.info("set " + dpid + " next sampling time: " + startSamplingTime);
 
-		JobDetail samplingJob = JobBuilder.newJob(SamplingJob.class).usingJobData("dpid", dpid).usingJobData("xid", xid)
+		JobDetail samplingJob = JobBuilder.newJob(SamplingJob.class).usingJobData("dpid", dpid)
 				.withIdentity("job-" + "-sampling-" + dpid, "group").build();
 
 		Trigger trigger = TriggerBuilder.newTrigger().withIdentity("trigger-" + "-sampling-" + dpid, "group")

@@ -78,7 +78,7 @@ public class SwitchSelectionBasicCentralityModule
 	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
 		flowMessageService = context.getServiceImpl(IFlowMessageService.class);
 		switchService = context.getServiceImpl(IOFSwitchService.class);
-		logger = LoggerFactory.getLogger(SwitchSelectionInfoCollector.class);
+		logger = LoggerFactory.getLogger(SwitchSelectionBasicCentralityModule.class);
 	}
 
 	@Override
@@ -89,16 +89,22 @@ public class SwitchSelectionBasicCentralityModule
 	}
 
 	@Override
-	public void messageRecive(FlowMessageType type, FlowMessage msg) {
-		//logger.info("msg : " + msg.toString());
-		switch (type) {
-		case FLOW_ADD:
-			dealWithFlowAddMsg((FlowAddMessage) msg);
-			break;
-		case FLOW_REMOVE:
-			dealWithFlowRemoveMsg((FlowRemovedMessage) msg);
-			break;
+	public void messageRecive(List<FlowMessage> msgs) {
+		logger.info("SwitchSelection recive msgs: msgs size: " + msgs.size());
+		for (FlowMessage msg : msgs) {
+			switch (msg.getMessageType()) {
+			case FLOW_ADD:
+				dealWithFlowAddMsg((FlowAddMessage) msg);
+				break;
+			case FLOW_REMOVE:
+				dealWithFlowRemoveMsg((FlowRemovedMessage) msg);
+				break;
+			default:
+				break;
+			}
 		}
+
+		updateSwitchSelection();
 	}
 
 	/**
@@ -121,8 +127,8 @@ public class SwitchSelectionBasicCentralityModule
 				// logger.info("fsSize: "+fs.size() + "");
 			}
 			flowInfo.setPath(path);
-			// logger.info(path+"");
-			updateSwitchSelection();
+			logger.info("Flow Add Message: flow size:" + flows.size());
+			// updateSwitchSelection();
 		}
 
 	}
@@ -138,9 +144,10 @@ public class SwitchSelectionBasicCentralityModule
 			switchMatrix.get(dpid).remove(flowStatics.getFlow());
 		}
 
-		flows.remove(flowStatics.getFlow()); 
+		flows.remove(flowStatics.getFlow());
+		logger.info("Switch selection, Flow removed: flow size: " + flows.size());
 
-		updateSwitchSelection();
+		// updateSwitchSelection();
 	}
 
 	@Override

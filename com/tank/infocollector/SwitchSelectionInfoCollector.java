@@ -150,7 +150,7 @@ public class SwitchSelectionInfoCollector implements IOFSwitchListener, IOFMessa
 						oflr.getIdleTimeout(), oflr.getHardTimeout(), oflr.getPacketCount(), oflr.getByteCount());
 				FlowRemovedMessage frMsg = new FlowRemovedMessage.Builder(fss).build();
 				if (frMsg != null) {
-					flowMessageService.pubMessage(frMsg);
+					flowMessageService.publishMessage(frMsg);
 					logger.info("Publish a flow removed message");
 				}
 			}
@@ -160,7 +160,7 @@ public class SwitchSelectionInfoCollector implements IOFSwitchListener, IOFMessa
 		case STATS_REPLY:
 			OFFlowStatsReply offsr = (OFFlowStatsReply) msg;
 			FlowStatsUpdateMessage fsuMsg = new FlowStatsUpdateMessage.Builder().setFlowStatsReply(offsr).build();
-			flowMessageService.pubMessage(fsuMsg);
+			flowMessageService.publishMessage(fsuMsg);
 			break;
 		}
 		return Command.CONTINUE;

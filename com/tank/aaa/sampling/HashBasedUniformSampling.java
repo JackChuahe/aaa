@@ -64,9 +64,8 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	private static Set<String> currentSamplingSws = Collections
 			.synchronizedSet(new HashSet<String>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR));
 
-	private static Map<String, SwitchSamplingInfo> mapForSwitchSamplingInfo = Collections
-			.synchronizedMap(Collections.synchronizedMap(
-					new HashMap<String, SwitchSamplingInfo>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR)));
+	private static Map<String, SwitchSamplingInfo> mapForSwitchSamplingInfo = Collections.synchronizedMap(
+			new HashMap<String, SwitchSamplingInfo>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR));
 
 	private final OFFactory factory = OFFactories.getFactory(OFVersion.OF_13);
 
@@ -82,18 +81,138 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	public static Set<String> workingSwitches = Collections
 			.synchronizedSet(new HashSet<String>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR));
 
-	public static long xid = 0; // 0: stop sampling
+	public static Map<String, Long> switchMapXid = Collections
+			.synchronizedMap(new HashMap<String, Long>(SWITCH_MAP_BASE_SIZE, SWITCH_MAP_BASE_LOAD_FACTOR));
+
+	public static long xid = 1; // 0: stop sampling
+	private Set<DatapathId> nowSws = new HashSet<DatapathId>();
+	public static Set<DatapathId> nextTimeSws = null;
 
 	@Override
 	public void switchSelectionUpdate(Set<DatapathId> sws, Map<DatapathId, Integer> switchCentrity) {
 
-		logger.info("Switch sampling update: " + sws);
+		nextTimeSws = sws;
 		xid++;
-		logger.info("xid is: "+xid);
-		clearJobs(); // clear jobs
-		stopSamplingSwitchs(); // stop sampling switches
+		/* compare and stop */
+		logger.info("Switch sampling update: " + sws);
+		logger.info("Now xid is: " + xid);
 		calculateSamplingRateForSwitches(sws); // compute new sampling strategy
-		startNewSampling(sws);
+		Set<DatapathId> intersection = setIntersection(nowSws, sws);
+		processWillStopSws(intersection);
+		processIntersection(intersection);
+		processWillSamplingSws(sws, intersection);
+		nowSws = sws;
+		// clearJobs(); // clear jobs
+		// stopSamplingSwitchs(); // stop sampling switches
+		// startNewSampling(sws);
+	}
+
+	/**
+	 * 
+	 * @param intersection
+	 */
+	private void processWillStopSws(Set<DatapathId> intersection) {
+		logger.info("In processWillStopSws...");
+		Set<DatapathId> stopSws = setSub(nowSws, intersection);
+		logger.info("Stop stop sws are: " + stopSws);
+
+		for (DatapathId dpid : stopSws) {
+			switchMapXid.put(dpid.toString(), 0L);
+			if (!workingSwitches.contains(dpid.toString())) {
+				switchService.getSwitch(dpid).write(DropMsg);
+				currentSamplingSws.remove(dpid.toString());
+			}
+			workingSwitches.remove(dpid.toString());
+			if (currentSamplingSws.contains(dpid.toString())) {
+				switchService.getSwitch(dpid).write(DropMsg);
+				currentSamplingSws.remove(dpid.toString());
+			}
+		}
+	}
+
+	/**
+	 * 
+	 * @param sws
+	 * @param intersection
+	 */
+	private void processWillSamplingSws(Set<DatapathId> sws, Set<DatapathId> intersection) {
+
+		logger.info("In processWillSamplingSws...");
+		Set<DatapathId> willSamplingSws = setSub(sws, intersection);
+		logger.info("Will sampling sws are: " + willSamplingSws);
+
+		for (DatapathId dpid : willSamplingSws) {
+			switchMapXid.put(dpid.toString(), xid);
+			currentSamplingSws.add(dpid.toString());// ;
+			JobDetail samplingJob = JobBuilder.newJob(SamplingJob.class).usingJobData("dpid", dpid.toString())
+					.withIdentity("job-" + "-sampling-" + dpid.toString(), "group").build();
+
+			Trigger trigger = TriggerBuilder.newTrigger()
+					.withIdentity("trigger-" + "-sampling-" + dpid.toString(), "group").startNow()// startAt(new
+																									// Date(ctime + 10))
+					.withSchedule(SimpleScheduleBuilder.simpleSchedule().withIntervalInSeconds(0).withRepeatCount(0)) // for
+																														// only
+																														// once
+					.build();
+			try {
+				scheduler.scheduleJob(samplingJob, trigger);
+			} catch (SchedulerException e) {
+				logger.error(e.getMessage());
+			}
+		}
+		try {
+
+			if (!scheduler.isStarted() && sws.size() > 0) {
+				scheduler.start();
+				logger.info("start sampling scheduler...");
+			}
+		} catch (SchedulerException e) {
+			logger.error(e.getMessage());
+		}
+	}
+
+	/**
+	 * 
+	 * @param intersection
+	 */
+	private void processIntersection(Set<DatapathId> intersection) {
+		logger.info("In process Intersection...");
+		logger.info("Intersection sws are: " + intersection);
+		for (DatapathId dpid : intersection) {
+			switchMapXid.put(dpid.toString(), xid);
+			if (!workingSwitches.contains(dpid.toString())
+					&& mapForSwitchSamplingInfo.get(dpid.toString()).getInterval() != 0) {
+				reSampling(dpid.toString(), mapForSwitchSamplingInfo.get(dpid).getSamplingTime());
+				workingSwitches.add(dpid.toString());
+			}
+
+		}
+	}
+
+	/**
+	 * 
+	 * @param swsOld
+	 * @param swsNow
+	 * @return
+	 */
+	private Set<DatapathId> setIntersection(Set<DatapathId> swsOld, Set<DatapathId> swsNow) {
+		Set<DatapathId> tmpSet = new HashSet<DatapathId>(swsOld.size() + 1, 1);
+		tmpSet.addAll(swsOld);
+		tmpSet.retainAll(swsNow);
+		return tmpSet;
+	}
+
+	/**
+	 * 
+	 * @param swsBeSub
+	 * @param swsSub
+	 * @return
+	 */
+	private Set<DatapathId> setSub(Set<DatapathId> swsBeSub, Set<DatapathId> swsSub) {
+		Set<DatapathId> tmpSet = new HashSet<DatapathId>(swsBeSub.size() + 1, 1);
+		tmpSet.addAll(swsBeSub);
+		tmpSet.removeAll(swsSub);
+		return tmpSet;
 	}
 
 	/**
@@ -126,7 +245,7 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 			currentSamplingSws.add(dpid.toString());// ;
 
 			JobDetail samplingJob = JobBuilder.newJob(SamplingJob.class).usingJobData("dpid", dpid.toString())
-					.usingJobData("xid", xid).withIdentity("job-" + "-sampling-" + dpid.toString(), "group").build();
+					.withIdentity("job-" + "-sampling-" + dpid.toString(), "group").build();
 
 			Trigger trigger = TriggerBuilder.newTrigger()
 					.withIdentity("trigger-" + "-sampling-" + dpid.toString(), "group").startNow()// startAt(new
@@ -161,7 +280,7 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	public void stopSamplingSwitchs() {
 		logger.info("Stop sampling switches");
 		for (String dpid : currentSamplingSws) {
-			logger.info(dpid+" ++++++++++++++++++++++++++");
+			logger.info(dpid + " ++++++++++++++++++++++++++");
 			switchService.getSwitch(mapForSwitchSamplingInfo.get(dpid).getDpid()).write(DropMsg);
 			logger.info("send stop sampling msg to: " + dpid);
 			// stop sampling
@@ -175,7 +294,7 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	 */
 	public void calculateSamplingRateForSwitches(Set<DatapathId> sws) {
 		logger.info("calculation sampling rate");
-		mapForSwitchSamplingInfo.clear();
+		// mapForSwitchSamplingInfo.clear();
 		Map<DatapathId, Set<Flow>> switchMatrix = switchSelectionService.getFlowMatrix();
 		Map<String, Double> tmp = new HashMap<String, Double>(mapForSwitchSamplingInfo.size(),
 				SWITCH_MAP_BASE_LOAD_FACTOR);
@@ -271,6 +390,8 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 		if (tmp != null && tmp != "") {
 			dpiMaxRate = Integer.parseInt(tmp);
 		}
+
+		logger.info("dpi-max rate: " + dpiMaxRate);
 	}
 
 	@Override
@@ -474,7 +595,6 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 			if (!workingSwitches.contains(dpid) && mapForSwitchSamplingInfo.get(dpid).getInterval() != 0) {
 				reSampling(dpid, mapForSwitchSamplingInfo.get(dpid).getSamplingTime());
 				workingSwitches.add(dpid);
-
 			}
 			// logger.info(dpid + "- samplingTime: " +
 			// mapForSwitchSamplingInfo.get(dpid).getSamplingTime() + " Interval: "
@@ -489,7 +609,7 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 		logger.info("set next stop sampling time: " + stopSamplingTime);
 
 		JobDetail stopSamplingJob = JobBuilder.newJob(StopSamplingJob.class).usingJobData("dpid", dpid)
-				.usingJobData("xid", xid).withIdentity("job-" + "-stop-" + dpid, "group").build();
+				.withIdentity("job-" + "-stop-" + dpid, "group").build();
 
 		Trigger trigger = TriggerBuilder.newTrigger().withIdentity("trigger-" + "-stop-" + dpid, "group")
 				.startAt(new Date(stopSamplingTime))
