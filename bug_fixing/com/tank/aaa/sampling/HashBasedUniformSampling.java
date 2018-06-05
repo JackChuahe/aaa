@@ -87,24 +87,28 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	public static long xid = 1; // 0: stop sampling
 	private Set<DatapathId> nowSws = new HashSet<DatapathId>();
 	public static Set<DatapathId> nextTimeSws = null;
+	Object inNewRound = new Object();
 
 	@Override
 	public void switchSelectionUpdate(Set<DatapathId> sws, Map<DatapathId, Integer> switchCentrity) {
 
-		nextTimeSws = sws;
-		xid++;
-		/* compare and stop */
-		logger.info("Switch sampling update: " + sws);
-		logger.info("Now xid is: " + xid);
-		calculateSamplingRateForSwitches(sws); // compute new sampling strategy
-		Set<DatapathId> intersection = setIntersection(nowSws, sws);
-		processWillStopSws(intersection);
-		processIntersection(intersection);
-		processWillSamplingSws(sws, intersection);
-		nowSws = sws;
-		// clearJobs(); // clear jobs
-		// stopSamplingSwitchs(); // stop sampling switches
-		// startNewSampling(sws);
+		synchronized (inNewRound) {
+
+			nextTimeSws = sws;
+			xid++;
+			/* compare and stop */
+			logger.info("Switch sampling update: " + sws);
+			logger.info("Now xid is: " + xid);
+			calculateSamplingRateForSwitches(sws); // compute new sampling strategy
+			Set<DatapathId> intersection = setIntersection(nowSws, sws);
+			processWillStopSws(intersection);
+			processIntersection(intersection);
+			processWillSamplingSws(sws, intersection);
+			nowSws = sws;
+			// clearJobs(); // clear jobs
+			// stopSamplingSwitchs(); // stop sampling switches
+			// startNewSampling(sws);
+		}
 	}
 
 	/**
@@ -557,63 +561,86 @@ public class HashBasedUniformSampling implements IFloodlightModule, ISwitchSelec
 	// listen for notify
 	@Override
 	public void flowStatsUpdate() {
-		logger.info("Flow Stats Update!");
-		Map<DatapathId, Set<Flow>> switchMatrix = switchSelectionService.getFlowMatrix();
-		Map<String, Double> tmp = new HashMap<String, Double>(mapForSwitchSamplingInfo.size(),
-				SWITCH_MAP_BASE_LOAD_FACTOR);
-		Map<Flow, FlowInfo> mapForFlowInfo = flowStatsService.getFlowStats();
+		synchronized (inNewRound) {
 
-		logger.info(mapForFlowInfo.toString());
+			logger.info("Flow Stats Update!");
+			Map<DatapathId, Set<Flow>> switchMatrix = switchSelectionService.getFlowMatrix();
+			Map<String, Double> tmp = new HashMap<String, Double>(mapForSwitchSamplingInfo.size(),
+					SWITCH_MAP_BASE_LOAD_FACTOR);
+			Map<Flow, FlowInfo> mapForFlowInfo = flowStatsService.getFlowStats();
 
-		double total = 0.0;
-		for (String dpid : mapForSwitchSamplingInfo.keySet()) {
-			double swPktps = 0.0;
-			for (Flow flow : switchMatrix.get(mapForSwitchSamplingInfo.get(dpid).getDpid())) {
-				FlowInfo flowInfo = mapForFlowInfo.get(flow);
-				if (flowInfo != null) {
-					total += flowInfo.getPkts();
-					swPktps += flowInfo.getPkts();
-				}
-			}
-			tmp.put(dpid, swPktps);
-		}
-		logger.info("total PKTS: " + total);
+			logger.info(mapForFlowInfo.toString());
 
-		// calculate sampling rate
-		for (String dpid : mapForSwitchSamplingInfo.keySet()) {
-			double swRate = tmp.get(dpid);
+			double total = 0.0;
 
-			logger.info("swRate: " + swRate + " total: " + total);
-			logger.info("dpid: " + dpid + " sampling Info: " + mapForSwitchSamplingInfo.get(dpid));
+			synchronized (mapForSwitchSamplingInfo) {
 
-			if (total < 1e-6 || swRate < 1e-6) {
-				mapForSwitchSamplingInfo.get(dpid).setInterval(0);
-			} else {
-				double rate = swRate / total;
-				double avliableRate = rate * dpiMaxRate;
-				if (avliableRate >= swRate) {
-					mapForSwitchSamplingInfo.get(dpid).setInterval(0);
-				} else {
-					double samplingRate = avliableRate / swRate;
-					long samplingTime = (long) (samplingRate * 1000);
+				for (String dpid : mapForSwitchSamplingInfo.keySet()) {
+					double swPktps = 0.0;
+					Set<Flow> flowSet = switchMatrix.get(mapForSwitchSamplingInfo.get(dpid).getDpid());
 
-					// logger.info("sampling rate: " + samplingRate + " sampling time: " +
-					// samplingTime);
+					if (flowSet == null) {
+						continue;
+					}
 
-					mapForSwitchSamplingInfo.get(dpid).setInterval(((long) 1000 - samplingTime));
-					mapForSwitchSamplingInfo.get(dpid).setSamplingTime(samplingTime);
+					/**
+					 * flowSet is a synchronized HashSet, but iterator() not thread-safe
+					 */
+					synchronized (flowSet) {
+						for (Flow flow : flowSet) {
+							FlowInfo flowInfo = mapForFlowInfo.get(flow);
+							if (flowInfo != null) {
+								total += flowInfo.getPkts();
+								swPktps += flowInfo.getPkts();
+							}
+						}
+					}
+
+					tmp.put(dpid, swPktps);
 				}
 			}
 
-			if (!workingSwitches.contains(dpid) && mapForSwitchSamplingInfo.get(dpid).getInterval() != 0) {
-				logger.info("To re sampling ");
-				reSampling(dpid, mapForSwitchSamplingInfo.get(dpid).getSamplingTime());
-				workingSwitches.add(dpid);
-				logger.info("Re sampling Finished");
+			logger.info("total PKTS: " + total);
+
+			// calculate sampling rate
+			synchronized (mapForSwitchSamplingInfo) {
+
+				for (String dpid : mapForSwitchSamplingInfo.keySet()) {
+					double swRate = tmp.get(dpid);
+
+					logger.info("swRate: " + swRate + " total: " + total);
+					logger.info("dpid: " + dpid + " sampling Info: " + mapForSwitchSamplingInfo.get(dpid));
+
+					if (total < 1e-6 || swRate < 1e-6) {
+						mapForSwitchSamplingInfo.get(dpid).setInterval(0);
+					} else {
+						double rate = swRate / total;
+						double avliableRate = rate * dpiMaxRate;
+						if (avliableRate >= swRate) {
+							mapForSwitchSamplingInfo.get(dpid).setInterval(0);
+						} else {
+							double samplingRate = avliableRate / swRate;
+							long samplingTime = (long) (samplingRate * 1000);
+
+							// logger.info("sampling rate: " + samplingRate + " sampling time: " +
+							// samplingTime);
+
+							mapForSwitchSamplingInfo.get(dpid).setInterval(((long) 1000 - samplingTime));
+							mapForSwitchSamplingInfo.get(dpid).setSamplingTime(samplingTime);
+						}
+					}
+
+					if (!workingSwitches.contains(dpid) && mapForSwitchSamplingInfo.get(dpid).getInterval() != 0) {
+						logger.info("To re sampling ");
+						reSampling(dpid, mapForSwitchSamplingInfo.get(dpid).getSamplingTime());
+						workingSwitches.add(dpid);
+						logger.info("Re sampling Finished");
+					}
+					// logger.info(dpid + "- samplingTime: " +
+					// mapForSwitchSamplingInfo.get(dpid).getSamplingTime() + " Interval: "
+					// + mapForSwitchSamplingInfo.get(dpid).getInterval());
+				}
 			}
-			// logger.info(dpid + "- samplingTime: " +
-			// mapForSwitchSamplingInfo.get(dpid).getSamplingTime() + " Interval: "
-			// + mapForSwitchSamplingInfo.get(dpid).getInterval());
 		}
 	}
 

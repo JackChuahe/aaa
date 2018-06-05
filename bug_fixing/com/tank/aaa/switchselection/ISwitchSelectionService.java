@@ -16,6 +16,4 @@ public interface ISwitchSelectionService extends IFloodlightService {
 	public Map<Flow, FlowInfo> getFlowInformation();
 
 	public Map<DatapathId, Set<Flow>> getFlowMatrix();
-	
-	public Object getMutex();
 }

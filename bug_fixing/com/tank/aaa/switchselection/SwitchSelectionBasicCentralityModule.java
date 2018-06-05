@@ -116,6 +116,7 @@ public class SwitchSelectionBasicCentralityModule
 		if (!flows.containsKey(flow)) {
 			FlowInfo flowInfo = new FlowInfo();
 			List<DatapathId> path = new ArrayList<DatapathId>();
+
 			List<NodePortTuple> switchPortList = msg.getRoute().getPath();
 			for (int indx = switchPortList.size() - 1; indx > 0; indx -= 2) {
 				DatapathId switchDPID = switchPortList.get(indx).getNodeId();
@@ -125,6 +126,7 @@ public class SwitchSelectionBasicCentralityModule
 				// logger.info("fsSize: "+fs.size() + "");
 			}
 			flowInfo.setPath(path);
+			flows.put(flow, flowInfo);
 			logger.info("Flow Add Message: flow size:" + flows.size());
 			// updateSwitchSelection();
 		}
@@ -237,8 +239,7 @@ public class SwitchSelectionBasicCentralityModule
 				switchSelected.add(switchMap.get(maxDpid));
 				switchCentrity.put(switchMap.get(maxDpid), max);
 
-				Set<Flow> sSet = switchMatrix.get(switchMap.get(maxDpid));
-				for (Flow flow : sSet) {
+				for (Flow flow : switchMatrix.get(switchMap.get(maxDpid))) {
 					int idx = flowToInteger.get(flow);
 					for (int i = 0; i < matrix[idx].length; ++i) {
 						matrix[idx][i] = 0;
@@ -289,10 +290,5 @@ public class SwitchSelectionBasicCentralityModule
 	@Override
 	public Map<DatapathId, Set<Flow>> getFlowMatrix() {
 		return switchMatrix;
-	}
-
-	@Override
-	public Object getMutex() {
-		return null;
 	}
 }

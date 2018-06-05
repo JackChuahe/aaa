@@ -149,6 +149,7 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 							flowInfo.setBytecount(entry.getByteCount().getValue());
 							flowInfos.put(flow, flowInfo);
 							logger.info("Flow Stats Add, flow Infos size: " + flowInfos.size());
+
 						}
 					}
 				}

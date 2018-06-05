@@ -31,6 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.tank.aaa.entity.Flow;
+import com.tank.aaa.entity.FlowInfo;
 import com.tank.aaa.entity.FlowStatics;
 import com.tank.aaa.message.FlowRemovedMessage;
 import com.tank.aaa.message.FlowStatsUpdateMessage;
@@ -219,10 +220,12 @@ public class SwitchSelectionInfoCollector implements IOFSwitchListener, IOFMessa
 			 **/
 			synchronized (switchSelectionService.getFlowInformation()) {
 				logger.info("In syncronized block for Flows");
-				for (Flow flow : switchSelectionService.getFlowInformation().keySet()) {
+				Map<Flow, FlowInfo> flowInfos = switchSelectionService.getFlowInformation();
+
+				for (Flow flow : flowInfos.keySet()) {
 					logger.info("Sending to flow: " + flow);
 					OFFlowStatsRequest ofFlowStatsRqst = buildFlowStatsRequest(flow);
-					DatapathId dpid = switchSelectionService.getFlowInformation().get(flow).getPath().get(0);
+					DatapathId dpid = flowInfos.get(flow).getPath().get(0);
 					switchService.getSwitch(dpid).write(ofFlowStatsRqst);
 					logger.info("Sended to sw: " + dpid.toString());
 				}
