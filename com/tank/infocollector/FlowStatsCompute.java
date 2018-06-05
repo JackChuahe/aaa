@@ -2,6 +2,7 @@ package com.tank.infocollector;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -38,8 +39,8 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 	private IFlowMessageService flowMessageService;
 	protected static Logger logger;
 
-	private static Map<Flow, FlowInfo> flowInfos = new HashMap<Flow, FlowInfo>(FLOW_MAP_BASE_SIZE,
-			FLOW_MAP_BASE_LOAD_FACTOR);
+	private static Map<Flow, FlowInfo> flowInfos = Collections
+			.synchronizedMap(new HashMap<Flow, FlowInfo>(FLOW_MAP_BASE_SIZE, FLOW_MAP_BASE_LOAD_FACTOR));
 
 	public Set<FlowStatsUpdateListener> listeners = new HashSet<FlowStatsUpdateListener>();
 
@@ -72,7 +73,7 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 	@Override
 	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
 		flowMessageService = context.getServiceImpl(IFlowMessageService.class);
-		logger = LoggerFactory.getLogger(SwitchSelectionInfoCollector.class);
+		logger = LoggerFactory.getLogger(FlowStatsCompute.class);
 
 	}
 
@@ -85,15 +86,22 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 
 	@Override
 	public void messageRecive(List<FlowMessage> msgs) {
-		if(msgs.size() == 0)return;
+		if (msgs.size() == 0)
+			return;
+		logger.info("Flow Stats Compute Module reciced msgs: msg size: " + msgs.size() + " type: "
+				+ msgs.get(0).getMessageType());
+
 		switch (msgs.get(0).getMessageType()) {
 		case FLOW_STATS_UPDATE:
+			logger.info("In case FLOW_STATS_UPDATE");
 			for (FlowMessage msg : msgs) {
 
 				FlowStatsUpdateMessage fsuMsg = (FlowStatsUpdateMessage) msg;
 				for (OFFlowStatsEntry entry : fsuMsg.getFlowStats().getEntries()) {
 					Match match = entry.getMatch();
 					Flow flow = null;
+					logger.info(" " + msg);
+					logger.info("Extract Flow Info...type: " + msg.getMessageType());
 					if (match.get(MatchField.IP_PROTO).equals(IpProtocol.TCP)) {
 						flow = new Flow(match.get(MatchField.IPV4_SRC).getInt(),
 								match.get(MatchField.IPV4_DST).getInt(),
@@ -106,20 +114,25 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 								match.get(MatchField.UDP_SRC).getPort(), match.get(MatchField.UDP_DST).getPort());
 					} // get flow
 					if (flow != null) {
+						logger.info("compute flow speed");
 						FlowInfo flowInfo = null;
 						double duration = ((double) entry.getDurationSec())
 								+ (double) entry.getDurationNsec() / (double) (10e9);
 
+						logger.info("Duration: " + duration);
+
 						if ((flowInfo = flowInfos.get(flow)) != null) {
 							double durationTemp = duration - flowInfo.getDuration();
-							double pkts = ((double) (entry.getPacketCount().getValue() - flowInfo.getPacketCount()))
-									/ durationTemp;
+							double pkts = ((double) (entry.getPacketCount().getValue()
+									- (double) flowInfo.getPacketCount())) / durationTemp;
 							flowInfo.setPkts(pkts);
 
-							double bps = ((double) entry.getByteCount().getValue() - flowInfo.getByteCount())
+							logger.info("PKTS: " + pkts);
+							double bps = ((double) entry.getByteCount().getValue() - (double) flowInfo.getByteCount())
 									/ durationTemp;
 
 							flowInfo.setBps(bps);
+							logger.info("BPS: " + bps);
 
 							flowInfo.setBytecount(entry.getByteCount().getValue());
 							flowInfo.setPacketCount(entry.getPacketCount().getValue());
@@ -135,15 +148,19 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 							flowInfo.setPacketCount(entry.getPacketCount().getValue());
 							flowInfo.setBytecount(entry.getByteCount().getValue());
 							flowInfos.put(flow, flowInfo);
+							logger.info("Flow Stats Add, flow Infos size: " + flowInfos.size());
+
 						}
 					}
 				}
 			}
 
+			logger.info("Notify Flow Stats listener...");
 			// notify flow stats update
 			for (FlowStatsUpdateListener listener : listeners) {
 				listener.flowStatsUpdate();
 			}
+			logger.info("Notify Flow Stats listener finished!");
 
 			// fsuMsg.getFlowStats().getEntries().get(0)
 			// logger.info("MessageRecived: Flow Stats Updated: " + flowInfos.toString());
@@ -153,8 +170,10 @@ public class FlowStatsCompute implements IFlowStatsService, IFloodlightModule, I
 				FlowRemovedMessage frMsg = (FlowRemovedMessage) msg;
 				FlowStatics flowStatics = frMsg.getFlowStats();
 				flowInfos.remove(flowStatics.getFlow());
-				logger.info("flow Infos : Flow Info Size: " + flowInfos.size());
+				logger.info("Flow Removed, flow Infos : Flow Info Size: " + flowInfos.size());
 			}
+			break;
+		default:
 			break;
 		}
 	}

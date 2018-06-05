@@ -13,6 +13,8 @@ import org.projectfloodlight.openflow.protocol.OFFlowStatsReply;
 import org.projectfloodlight.openflow.protocol.OFFlowStatsRequest;
 import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFPortDesc;
+import org.projectfloodlight.openflow.protocol.OFStatsReply;
+import org.projectfloodlight.openflow.protocol.OFStatsType;
 import org.projectfloodlight.openflow.protocol.OFType;
 import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.match.Match;
@@ -29,6 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.tank.aaa.entity.Flow;
+import com.tank.aaa.entity.FlowInfo;
 import com.tank.aaa.entity.FlowStatics;
 import com.tank.aaa.message.FlowRemovedMessage;
 import com.tank.aaa.message.FlowStatsUpdateMessage;
@@ -158,9 +161,18 @@ public class SwitchSelectionInfoCollector implements IOFSwitchListener, IOFMessa
 
 			break;
 		case STATS_REPLY:
-			OFFlowStatsReply offsr = (OFFlowStatsReply) msg;
-			FlowStatsUpdateMessage fsuMsg = new FlowStatsUpdateMessage.Builder().setFlowStatsReply(offsr).build();
-			flowMessageService.publishMessage(fsuMsg);
+			logger.info("recive Stats reply: " + msg.getType());
+			OFStatsReply osr = (OFStatsReply) msg;
+			if (osr.getStatsType().equals(OFStatsType.FLOW)) {
+				logger.info("Recive Flow Stats reply");
+				OFFlowStatsReply offsr = (OFFlowStatsReply) osr;
+				FlowStatsUpdateMessage fsuMsg = new FlowStatsUpdateMessage.Builder().setFlowStatsReply(offsr).build();
+				flowMessageService.publishMessage(fsuMsg);
+			} else {
+				logger.info("Recive stats NOT Flow Stats; " + osr.getStatsType());
+			}
+			break;
+		default:
 			break;
 		}
 		return Command.CONTINUE;
@@ -201,12 +213,24 @@ public class SwitchSelectionInfoCollector implements IOFSwitchListener, IOFMessa
 
 		@Override
 		public void run() {
-			for (Flow flow : switchSelectionService.getFlowInformation().keySet()) {
-				OFFlowStatsRequest ofFlowStatsRqst = buildFlowStatsRequest(flow);
-				switchService.getAllSwitchMap()
-						.get(switchSelectionService.getFlowInformation().get(flow).getPath().get(0))
-						.write(ofFlowStatsRqst);
+			logger.info("Sending to stats request...");
+			/**
+			 * synchronized block Collections synchronized Object is not implements
+			 * iterator() synchronized
+			 **/
+			synchronized (switchSelectionService.getFlowInformation()) {
+				logger.info("In syncronized block for Flows");
+				Map<Flow, FlowInfo> flowInfos = switchSelectionService.getFlowInformation();
+
+				for (Flow flow : flowInfos.keySet()) {
+					logger.info("Sending to flow: " + flow);
+					OFFlowStatsRequest ofFlowStatsRqst = buildFlowStatsRequest(flow);
+					DatapathId dpid = flowInfos.get(flow).getPath().get(0);
+					switchService.getSwitch(dpid).write(ofFlowStatsRqst);
+					logger.info("Sended to sw: " + dpid.toString());
+				}
 			}
+
 		}
 	}
 

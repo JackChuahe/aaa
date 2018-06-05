@@ -14,6 +14,7 @@ import org.quartz.Trigger;
 import org.quartz.TriggerBuilder;
 
 public class StopSamplingJob implements org.quartz.Job {
+	private long xid = -1;
 
 	@Override
 	public void execute(JobExecutionContext ctx) throws JobExecutionException {
@@ -24,17 +25,31 @@ public class StopSamplingJob implements org.quartz.Job {
 
 		// sampling
 		Map<String, SwitchSamplingInfo> map = HashBasedUniformSampling.getSwitchSamplingInfo();
+		SwitchSamplingInfo samplingInfo = map.get(dpid);
 		// set start sampling task
 		if ((xidTmp == null || xidTmp != HashBasedUniformSampling.xid)
-				&& !HashBasedUniformSampling.nextTimeSws.contains(map.get(dpid).getDpid())) {
-			HashBasedUniformSampling.logger
-					.error("sampling job: " + dpid + " have no xid or xid different. exit job! My xid: " + xidTmp
-							+ " now Xid: " + HashBasedUniformSampling.xid);
+				&& (samplingInfo == null || !HashBasedUniformSampling.nextTimeSws.contains(samplingInfo.getDpid()))) {
+			HashBasedUniformSampling.logger.error("sampling job: " + dpid
+					+ " have no xid or xid different or sampling information. exit job! My xid: " + xidTmp
+					+ " now Xid: " + HashBasedUniformSampling.xid);
+			return;
+		} else {
+			xid = xidTmp;
+		}
+
+		boolean isSendOk = sendStopSamplingMsg(dpid, map);
+		if (!isSendOk) {
+			HashBasedUniformSampling.logger.info("Stop sampling message not send ok . return. exit job");
 			return;
 		}
 
-		sendStopSamplingMsg(dpid, map);
-		setStartSamplingTask(ctx.getScheduler(), dpid, map);
+		samplingInfo = map.get(dpid);
+		if (xid == HashBasedUniformSampling.xid
+				|| (samplingInfo != null && HashBasedUniformSampling.nextTimeSws.contains(samplingInfo.getDpid()))) {
+			setStartSamplingTask(ctx.getScheduler(), dpid, samplingInfo,map);
+		} else {
+			HashBasedUniformSampling.logger.info("xid different. not start up sampling job. exit");
+		}
 
 	}
 
@@ -42,11 +57,20 @@ public class StopSamplingJob implements org.quartz.Job {
 	 * 
 	 * @param dpid
 	 */
-	public void sendStopSamplingMsg(String dpid, Map<String, SwitchSamplingInfo> map) {
-		HashBasedUniformSampling.getSwitchService().getSwitch(map.get(dpid).getDpid())
-				.write(HashBasedUniformSampling.DropMsg);
+	public boolean sendStopSamplingMsg(String dpid, Map<String, SwitchSamplingInfo> map) {
+		SwitchSamplingInfo samplingInfo = map.get(dpid);
 
-		HashBasedUniformSampling.getCurrentSamplingSwitches().remove(dpid);
+		if (xid == HashBasedUniformSampling.xid
+				|| (samplingInfo != null && HashBasedUniformSampling.nextTimeSws.contains(samplingInfo.getDpid()))) {
+
+			HashBasedUniformSampling.getSwitchService().getSwitch(map.get(dpid).getDpid())
+					.write(HashBasedUniformSampling.DropMsg);
+
+			HashBasedUniformSampling.getCurrentSamplingSwitches().remove(dpid);
+			return true;
+		}
+		return false;
+
 	}
 
 	/**
@@ -54,9 +78,10 @@ public class StopSamplingJob implements org.quartz.Job {
 	 * @param scheduler
 	 * @param dpid
 	 */
-	public void setStartSamplingTask(Scheduler scheduler, String dpid, Map<String, SwitchSamplingInfo> map) {
+	public void setStartSamplingTask(Scheduler scheduler, String dpid, SwitchSamplingInfo samplingInfo,
+			Map<String, SwitchSamplingInfo> map) {
 
-		long startSamplingTime = System.currentTimeMillis() + map.get(dpid).getInterval();
+		long startSamplingTime = System.currentTimeMillis() + samplingInfo.getInterval();
 		HashBasedUniformSampling.logger.info("set " + dpid + " next sampling time: " + startSamplingTime);
 
 		JobDetail samplingJob = JobBuilder.newJob(SamplingJob.class).usingJobData("dpid", dpid)
@@ -69,6 +94,16 @@ public class StopSamplingJob implements org.quartz.Job {
 																													// once
 				.build();
 		try {
+
+			samplingInfo = map.get(dpid);
+			if (xid != HashBasedUniformSampling.xid && (samplingInfo == null
+					|| !HashBasedUniformSampling.nextTimeSws.contains(samplingInfo.getDpid()))) {
+				HashBasedUniformSampling.logger.error("stop job: " + dpid
+						+ " have no xid or xid different or sampling information. stop start sampling job. exit job! My xid: "
+						+ xid + " now Xid: " + HashBasedUniformSampling.xid);
+
+				return;
+			}
 			scheduler.scheduleJob(samplingJob, trigger);
 		} catch (SchedulerException e) {
 			HashBasedUniformSampling.logger.error(e.getMessage());

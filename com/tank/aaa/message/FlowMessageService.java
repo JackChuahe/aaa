@@ -112,6 +112,7 @@ public class FlowMessageService implements IFloodlightModule, IFlowMessageServic
 		public void run() {
 			while (true) {
 				try {
+					log.info("bbbbb");
 					FlowMessage msg = flowStatsBq.take();
 					List<FlowMessage> msgs = new ArrayList<FlowMessage>(flowStatsBq.size() + INIT_SIZE);
 					log.info("Flow Stats Queue: Queue Size: " + flowStatsBq.size());
@@ -120,9 +121,11 @@ public class FlowMessageService implements IFloodlightModule, IFlowMessageServic
 						msg = flowStatsBq.poll(WAITING_TIME, TimeUnit.MILLISECONDS);
 					} while (msg != null);
 
+					log.info("Flow Stats messages: Package Size: " + msgs.size());
 					for (IFlowMessageListener listener : listenners.get(FlowMessageType.FLOW_STATS_UPDATE)) {
 						listener.messageRecive(msgs);
 					}
+					log.info("Flow stats messages take finished.");
 				} catch (InterruptedException e) {
 					log.error(e.getMessage());
 				}
@@ -157,6 +160,10 @@ public class FlowMessageService implements IFloodlightModule, IFlowMessageServic
 			set.add(type);
 			listennerInfo.put(listener, set);
 		}
+
+		log.info(listener.getClass().getSimpleName() + " listen for " + type + " messages");
+		log.info("listener Infos: " + listennerInfo);
+		log.info("listeners: " + listenners);
 	}
 
 	@Override

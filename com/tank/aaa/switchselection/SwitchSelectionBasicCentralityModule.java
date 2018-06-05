@@ -115,7 +115,6 @@ public class SwitchSelectionBasicCentralityModule
 		Flow flow = msg.getFlow();
 		if (!flows.containsKey(flow)) {
 			FlowInfo flowInfo = new FlowInfo();
-			flows.put(flow, flowInfo);
 			List<DatapathId> path = new ArrayList<DatapathId>();
 
 			List<NodePortTuple> switchPortList = msg.getRoute().getPath();
@@ -127,6 +126,7 @@ public class SwitchSelectionBasicCentralityModule
 				// logger.info("fsSize: "+fs.size() + "");
 			}
 			flowInfo.setPath(path);
+			flows.put(flow, flowInfo);
 			logger.info("Flow Add Message: flow size:" + flows.size());
 			// updateSwitchSelection();
 		}
@@ -177,7 +177,8 @@ public class SwitchSelectionBasicCentralityModule
 
 	public void switchUpdate(DatapathId switchId) {
 		if (!switchMatrix.containsKey(switchId)) {
-			switchMatrix.put(switchId, new HashSet<Flow>(FLOW_MAP_BASE_SIZE, FLOW_MAP_BASE_LOAD_FACTOR));
+			switchMatrix.put(switchId,
+					Collections.synchronizedSet(new HashSet<Flow>(FLOW_MAP_BASE_SIZE, FLOW_MAP_BASE_LOAD_FACTOR)));
 			logger.info(switchId.toString() + " switch add!");
 		}
 	}

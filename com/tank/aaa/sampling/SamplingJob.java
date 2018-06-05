@@ -25,8 +25,9 @@ public class SamplingJob implements org.quartz.Job {
 		String dpid = ctx.getJobDetail().getJobDataMap().getString("dpid");
 		Long xidTmp = HashBasedUniformSampling.switchMapXid.get(dpid);
 		Map<String, SwitchSamplingInfo> map = HashBasedUniformSampling.getSwitchSamplingInfo();
+		SwitchSamplingInfo samplingInfo = map.get(dpid);
 		if ((xidTmp == null || xidTmp != HashBasedUniformSampling.xid)
-				&& !HashBasedUniformSampling.nextTimeSws.contains(map.get(dpid).getDpid())) {
+				&& (samplingInfo == null || !HashBasedUniformSampling.nextTimeSws.contains(samplingInfo.getDpid()))) {
 			HashBasedUniformSampling.logger
 					.error("sampling job: " + dpid + " have no xid or xid different. exit job! My xid: " + xidTmp
 							+ " now Xid: " + HashBasedUniformSampling.xid);
@@ -36,32 +37,53 @@ public class SamplingJob implements org.quartz.Job {
 		}
 
 		// sampling
-		sendSamplingMsg(dpid, map);
-
-		if (map.get(dpid).getInterval() != 0) { // sampling all the time
-			// set stop sampling task
-			setStopSamplingTask(ctx.getScheduler(), dpid, map);
-			HashBasedUniformSampling.workingSwitches.add(dpid);
-		} else {
-			HashBasedUniformSampling.workingSwitches.remove(dpid);
+		boolean sendOk = sendSamplingMsg(dpid, map);
+		if (!sendOk) {
+			HashBasedUniformSampling.logger.info("send not ok! return. stop job");
+			return;
 		}
 
+		samplingInfo = map.get(dpid);
+		if (xid == HashBasedUniformSampling.xid
+				|| (samplingInfo != null && HashBasedUniformSampling.nextTimeSws.contains(samplingInfo.getDpid()))) {
+			if (samplingInfo.getInterval() != 0) { // sampling all the time
+				// set stop sampling task
+				setStopSamplingTask(ctx.getScheduler(), dpid, samplingInfo);
+				HashBasedUniformSampling.workingSwitches.add(dpid);
+			} else {
+				HashBasedUniformSampling.workingSwitches.remove(dpid);
+			}
+		} else {
+			// if xid different, we must stop sampling immediatly
+			// send stop msg immediatly;
+			HashBasedUniformSampling.getSwitchService().getSwitch(map.get(dpid).getDpid())
+					.write(HashBasedUniformSampling.DropMsg);
+
+			HashBasedUniformSampling.workingSwitches.remove(dpid);
+			HashBasedUniformSampling.getCurrentSamplingSwitches().remove(dpid);
+		}
 	}
 
 	/**
 	 * 
 	 * @param dpid
 	 */
-	public void sendSamplingMsg(String dpid, Map<String, SwitchSamplingInfo> map) {
+	public boolean sendSamplingMsg(String dpid, Map<String, SwitchSamplingInfo> map) {
 
-		HashBasedUniformSampling.getCurrentSamplingSwitches().add(dpid);
+		SwitchSamplingInfo samplingInfo = map.get(dpid);
+
 		if (xid == HashBasedUniformSampling.xid
-				|| HashBasedUniformSampling.nextTimeSws.contains(map.get(dpid).getDpid())) {
+				|| (samplingInfo != null && HashBasedUniformSampling.nextTimeSws.contains(samplingInfo.getDpid()))) {
+
+			HashBasedUniformSampling.getCurrentSamplingSwitches().add(dpid);
 			HashBasedUniformSampling.getSwitchService().getSwitch(map.get(dpid).getDpid())
 					.write(HashBasedUniformSampling.SamplingMsg);
 			HashBasedUniformSampling.logger.info("Job: " + dpid + " sampling. At: " + System.currentTimeMillis());
 
+			return true;
 		}
+
+		return false;
 	}
 
 	/**
@@ -69,9 +91,9 @@ public class SamplingJob implements org.quartz.Job {
 	 * @param scheduler
 	 * @param dpid
 	 */
-	public void setStopSamplingTask(Scheduler scheduler, String dpid, Map<String, SwitchSamplingInfo> map) {
+	public void setStopSamplingTask(Scheduler scheduler, String dpid, SwitchSamplingInfo samplingInfo) {
 
-		long stopSamplingTime = System.currentTimeMillis() + map.get(dpid).getSamplingTime();
+		long stopSamplingTime = System.currentTimeMillis() + samplingInfo.getSamplingTime();
 		HashBasedUniformSampling.logger.info("set " + dpid + " next stop sampling time: " + stopSamplingTime);
 
 		JobDetail stopSamplingJob = JobBuilder.newJob(StopSamplingJob.class).usingJobData("dpid", dpid)
