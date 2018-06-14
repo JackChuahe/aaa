@@ -1,4 +1,4 @@
-bingDevicename=127.0.0.1
+bingDevicename=192.168.1.111
 captureLen=65536
 timeout=0
-#filter=
+filter= tcp or udp and not tcp src port 22 and not tcp dst port 22

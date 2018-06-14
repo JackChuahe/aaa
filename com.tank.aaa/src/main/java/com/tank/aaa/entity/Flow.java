@@ -55,8 +55,7 @@ public class Flow {
 
 	@Override
 	public String toString() {
-		return  srcIp  + " "+dstIp +  " " + ipProtocol + " "
-				+ srcPort + " " + dstPort;
+		return srcIp + " " + dstIp + " " + ipProtocol + " " + srcPort + " " + dstPort;
 	}
 
 	public Flow(int srcIp, int dstIp, short ipProtocol, int srcPort, int dstPort) {

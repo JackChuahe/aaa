@@ -5,6 +5,7 @@ import java.util.concurrent.BlockingQueue;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.pcap4j.packet.EthernetPacket;
+import org.pcap4j.packet.IllegalRawDataException;
 import org.pcap4j.packet.IpV4Packet;
 import org.pcap4j.packet.TcpPacket;
 import org.pcap4j.packet.UdpPacket;
@@ -14,6 +15,7 @@ import org.pcap4j.packet.namednumber.IpNumber;
 import com.tank.aaa.entity.BlockingQueueFactory;
 import com.tank.aaa.entity.CaptureFlowManager;
 import com.tank.aaa.entity.Flow;
+import com.tank.aaa.entity.Packet;
 import com.tank.aaa.util.AppContext;
 
 public class StatisticsModule extends AbstractModule {
@@ -37,6 +39,7 @@ public class StatisticsModule extends AbstractModule {
 
 				if (pkt.getHeader().getType().equals(EtherType.IPV4)) {
 					processIpV4Packet((IpV4Packet) pkt.getPayload());
+
 				}
 
 			} catch (InterruptedException e) {
@@ -53,10 +56,12 @@ public class StatisticsModule extends AbstractModule {
 		if (packet.getHeader().getProtocol().equals(IpNumber.TCP)
 				&& cfm.getCapturePropoerties().get("tcp").equals("true")) {
 			cmixSmix(packet, true);
+			//logger.info("TCP: " + packet.getHeader().toString());
 
 		} else if (packet.getHeader().getProtocol().equals(IpNumber.UDP)
 				&& cfm.getCapturePropoerties().get("udp").equals("true")) {
 			cmixSmix(packet, false);
+			//logger.info("UDP: " + packet.getHeader().toString());
 		}
 	}
 
@@ -78,13 +83,23 @@ public class StatisticsModule extends AbstractModule {
 							&& (tcp.getHeader().getDstPort().valueAsInt() >= minServerPort
 									&& tcp.getHeader().getDstPort().valueAsInt() <= maxServerPort))) {
 				Flow flow = new Flow(packet.getHeader().getSrcAddr().hashCode(),
+
 						packet.getHeader().getDstAddr().hashCode(), IpNumber.TCP.value(),
 						tcp.getHeader().getSrcPort().valueAsInt(), tcp.getHeader().getDstPort().valueAsInt());
-				cfm.recordFlow(flow);
+
+				Packet pkt = new Packet();
+
+				pkt.setFlow(flow);
+				pkt.addExtraAttr("headerHashCode", tcp.getHeader().hashCode() + "");
+				cfm.recordFlow(pkt);
+
 			}
 		} else {
 			UdpPacket udp = (UdpPacket) packet.getPayload();
-
+			if (checkVxlan(udp)) { // vxlan
+				processVxlan(udp);
+				return;
+			}
 			if (((udp.getHeader().getSrcPort().valueAsInt() >= minServerPort
 					&& udp.getHeader().getSrcPort().valueAsInt() <= maxServerPort)
 					&& (udp.getHeader().getDstPort().valueAsInt() >= minClientPort
@@ -96,8 +111,41 @@ public class StatisticsModule extends AbstractModule {
 				Flow flow = new Flow(packet.getHeader().getSrcAddr().hashCode(),
 						packet.getHeader().getDstAddr().hashCode(), IpNumber.UDP.value(),
 						udp.getHeader().getSrcPort().valueAsInt(), udp.getHeader().getDstPort().valueAsInt());
-				cfm.recordFlow(flow);
+
+				Packet pkt = new Packet();
+
+				pkt.setFlow(flow);
+				pkt.addExtraAttr("headerHashCode", udp.getHeader().hashCode() + "");
+
+				cfm.recordFlow(pkt);
 			}
+		}
+	}
+
+	private boolean checkVxlan(UdpPacket udp) {
+		if (udp.getHeader().getDstPort().valueAsInt() == 4789) {
+			return true; // vlxan
+		}
+		return false;
+		/*
+		 * byte[] vxlan = udp.getPayload().getRawData(); try { EthernetPacket pkt =
+		 * EthernetPacket.newPacket(vxlan, 8, vxlan.length - 8); } catch
+		 * (IllegalRawDataException e) { logger.catching(e); }
+		 * 
+		 * return false;
+		 */
+	}
+
+	private void processVxlan(UdpPacket udp) {
+		byte[] vxlan = udp.getPayload().getRawData();
+		try {
+			EthernetPacket pkt = EthernetPacket.newPacket(vxlan, 8, vxlan.length - 8);
+
+			if (pkt.getHeader().getType().equals(EtherType.IPV4)) {
+				processIpV4Packet((IpV4Packet) pkt.getPayload());
+			}
+		} catch (IllegalRawDataException e) {
+			logger.catching(e);
 		}
 	}
 
@@ -139,8 +187,8 @@ public class StatisticsModule extends AbstractModule {
 		}
 
 		logger.info("Loaded stats config finished!");
-		logger.info("Filter condition: min-client-port: " + minClientPort + " max-client-port: " + maxClientPort + " minServerPort: "
-				+ minServerPort + " maxServerport: " + maxServerPort);
+		logger.info("Filter condition: min-client-port: " + minClientPort + " max-client-port: " + maxClientPort
+				+ " minServerPort: " + minServerPort + " maxServerport: " + maxServerPort);
 		;
 	}
 

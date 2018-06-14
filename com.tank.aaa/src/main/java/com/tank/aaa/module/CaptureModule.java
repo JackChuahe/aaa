@@ -45,11 +45,12 @@ public class CaptureModule extends AbstractModule {
 
 	/**
 	 * en queeue
+	 * 
 	 * @param eth
 	 */
 	public void enQueue(EthernetPacket eth) {
-		pktQueue.offer(eth);  // no wait to insert to queue
-		//System.out.println(pktQueue.size());
+		pktQueue.offer(eth); // no wait to insert to queue
+		// System.out.println(pktQueue.size());
 	}
 
 	@Override
@@ -59,35 +60,37 @@ public class CaptureModule extends AbstractModule {
 		this.ctx = ctx;
 		PropertiesLoader pl = ctx.getService(PropertiesLoader.class);
 		Map properties = pl.loadProperties("pcapconfig.propertites");
-		
+
 		try {
 			InetAddress addr = InetAddress.getByName(properties.get("bingDevicename").toString());
-			PcapNetworkInterface nif = Pcaps.getDevByAddress(addr);
+			PcapNetworkInterface nif = Pcaps.getDevByAddress(addr);// Pcaps.getDevByName("enp4s0f1");
 			int snapLen = Integer.parseInt(properties.get("captureLen").toString());
 			PromiscuousMode mode = PromiscuousMode.PROMISCUOUS;
 			int timeout = Integer.parseInt(properties.get("timeout").toString());
 			handle = nif.openLive(snapLen, mode, timeout);
-			if(properties.get("filter") != null) {
+			logger.info(properties.get("filter"));
+			if (properties.get("filter") != null) {
 				handle.setFilter(properties.get("filter").toString(), BpfCompileMode.OPTIMIZE);
 			}
-			logger.info("set handle finished. On: "+addr+" packet size: "+snapLen+" timeout: "+timeout +" filter: "+properties.get("filter"));
-		} catch (UnknownHostException | PcapNativeException | NotOpenException  e1) {
+			logger.info("set handle finished. On: " + addr + " packet size: " + snapLen + " timeout: " + timeout
+					+ " filter: " + properties.get("filter"));
+		} catch (UnknownHostException | PcapNativeException | NotOpenException e1) {
 			logger.catching(e1);
 		}
 		// load queue
-		pktQueue =  ctx.getService(BlockingQueueFactory.class).getPacketQueue();
-		if(pktQueue == null) {
+		pktQueue = ctx.getService(BlockingQueueFactory.class).getPacketQueue();
+		if (pktQueue == null) {
 			logger.error("Get Blocking queue failed!");
 			ctx.exit(-1);
 		}
 		logger.info("Initial Capture module finished!");
 	}
-	
+
 	/**
 	 * close
 	 */
 	public void handleClose() {
-		if(handle != null && handle.isOpen()) {
+		if (handle != null && handle.isOpen()) {
 			handle.close();
 			logger.info("Capture handle closed!");
 		}
